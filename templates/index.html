@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>劳动仲裁申请书在线填写</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div class="container mx-auto max-w-5xl p-4 md:p-6">
+        <!-- 标题栏 -->
+        <header class="form-header text-white rounded-xl shadow-lg p-6 mb-8">
+            <h1 class="text-3xl font-bold text-center mb-2">劳动仲裁申请书</h1>
+            <p class="text-center opacity-90">在线填写工具 - 根据《劳动争议调解仲裁法》制作</p>
+            <div class="flex flex-wrap justify-center items-center mt-4 gap-4">
+                <div class="flex items-center">
+                    <i class="fas fa-file-contract mr-2"></i>
+                    <span>符合法定格式要求</span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fas fa-shield-alt mr-2"></i>
+                    <span>数据本地保存，安全可靠</span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fas fa-print mr-2"></i>
+                    <span>支持一键打印</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 收件编号区域 -->
+        <div class="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-xl no-print">
+            <div class="flex items-center gap-4">
+                <label class="text-gray-700 font-medium whitespace-nowrap">
+                    <i class="fas fa-hashtag mr-2 text-blue-600"></i>收件编号：
+                </label>
+                <input type="text" id="receiptNumber" class="flex-1 max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="请输入收件编号（保存时必填）">
+                <span class="text-sm text-gray-500" id="receiptNumberDisplay" style="display: none;">
+                    当前收件编号：<strong class="text-blue-600" id="currentReceiptNumber"></strong>
+                </span>
+            </div>
+        </div>
+
+        <!-- 操作按钮区域 -->
+        <div class="flex flex-wrap justify-between items-center mb-8 p-4 bg-white rounded-xl shadow no-print">
+            <div class="mb-4 md:mb-0">
+                <button id="saveBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg mr-3 transition duration-300">
+                    <i class="fas fa-save mr-2"></i>保存数据
+                </button>
+                <button id="resetBtn" class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition duration-300">
+                    <i class="fas fa-redo mr-2"></i>重置表单
+                </button>
+            </div>
+            <div>
+                <button id="printBtn" class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg mr-3 transition duration-300">
+                    <i class="fas fa-print mr-2"></i>打印申请书
+                </button>
+                <button id="previewBtn" class="bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded-lg transition duration-300">
+                    <i class="fas fa-eye mr-2"></i>预览完整版
+                </button>
+            </div>
+        </div>
+
+        <!-- 填写说明 -->
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8 rounded-r-lg no-print">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-info-circle text-yellow-400 text-xl mt-1"></i>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-yellow-800">填写说明</h3>
+                    <div class="mt-2 text-sm text-yellow-700">
+                        <p>1. 请根据实际情况如实填写所有信息，确保内容真实准确。</p>
+                        <p>2. 每位申请人的仲裁请求应明确具体，事实与理由应简明扼要。</p>
+                        <p>3. 填写完成后可以保存数据到本地，或直接打印申请书。</p>
+                        <p>4. 可添加多个申请人、被申请人，每位申请人有独立的仲裁请求和事实理由。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 表单主体 -->
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <!-- 申请人列表 -->
+            <section class="form-section p-6 border-b border-gray-200 fade-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-blue-700 flex items-center">
+                        <i class="fas fa-users mr-2"></i> 申请人列表
+                    </h2>
+                    <button id="addApplicantBtn" class="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition duration-300 no-print">
+                        <i class="fas fa-plus mr-2"></i>添加申请人
+                    </button>
+                </div>
+                <div id="applicantsList">
+                    <!-- 申请人区块将通过JavaScript动态生成 -->
+                </div>
+                <p class="text-gray-600 text-sm mt-2">提示：每位申请人单独填写，各自拥有自己的仲裁请求和事实理由。</p>
+            </section>
+
+            <!-- 被申请人列表 -->
+            <section class="form-section p-6 border-b border-gray-200 fade-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-blue-700 flex items-center">
+                        <i class="fas fa-building mr-2"></i> 被申请人列表（用人单位）
+                    </h2>
+                    <button id="addRespondentBtn" class="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition duration-300 no-print">
+                        <i class="fas fa-plus mr-2"></i>添加被申请人
+                    </button>
+                </div>
+                <div id="respondentsList">
+                    <!-- 被申请人区块将通过JavaScript动态生成 -->
+                </div>
+                <p class="text-gray-600 text-sm mt-2">提示：可添加一个或多个被申请人（用人单位）。</p>
+            </section>
+
+            <!-- 证据清单 -->
+            <section class="form-section p-6 fade-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-blue-700 flex items-center">
+                        <i class="fas fa-file-alt mr-2"></i> 证据清单
+                    </h2>
+                    <button id="addEvidenceBtn" class="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition duration-300 no-print">
+                        <i class="fas fa-plus mr-2"></i>添加证据
+                    </button>
+                </div>
+                <div id="evidenceList">
+                    <!-- 证据区块将通过JavaScript动态生成 -->
+                </div>
+                <p class="text-gray-600 text-sm mt-2">提示：请列出所有证据，包括劳动合同、工资条、考勤记录、解除劳动关系证明等。</p>
+            </section>
+        </div>
+
+        <!-- 底部信息 -->
+        <div class="mt-8 mb-12">
+            <div class="bg-gray-100 p-6 rounded-xl border border-gray-300">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">提交说明</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="font-medium text-gray-700 mb-2"><i class="fas fa-check-circle text-green-500 mr-2"></i>提交材料清单</h4>
+                        <ul class="text-gray-600 text-sm space-y-1 ml-6">
+                            <li>1. 劳动仲裁申请书（本表）一式三份</li>
+                            <li>2. 申请人身份证复印件一份</li>
+                            <li>3. 被申请人单位工商注册信息一份</li>
+                            <li>4. 证据材料清单及复印件一式三份</li>
+                            <li>5. 委托他人代理的需提交授权委托书</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-gray-700 mb-2"><i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>注意事项</h4>
+                        <ul class="text-gray-600 text-sm space-y-1 ml-6">
+                            <li>• 劳动争议申请仲裁的时效期间为一年</li>
+                            <li>• 仲裁申请书应当载明明确的仲裁请求和事实理由</li>
+                            <li>• 提交的复印件需携带原件核对</li>
+                            <li>• 提交地址：永安市劳动人事争议仲裁委员会</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 预览模态框 -->
+        <div id="previewModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+            <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+                <div class="sticky top-0 bg-white p-6 border-b border-gray-300 flex justify-between items-center">
+                    <h3 class="text-2xl font-bold text-gray-800">劳动仲裁申请书（预览）</h3>
+                    <button id="closePreviewBtn" class="text-gray-500 hover:text-gray-700 text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <div id="previewContent" class="preview-content space-y-6">
+                        <!-- 预览内容将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                <div class="sticky bottom-0 bg-white p-6 border-t border-gray-300 flex justify-end">
+                    <button id="printPreviewBtn" class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-6 rounded-lg mr-4">
+                        <i class="fas fa-print mr-2"></i>打印预览版
+                    </button>
+                    <button id="closePreviewBtn2" class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-6 rounded-lg">
+                        关闭预览
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 打印版（仅在打印时显示） -->
+    <div class="print-only">
+        <div class="p-8">
+            <h1 class="text-3xl font-bold text-center mb-10">劳动仲裁申请书</h1>
+
+            <div id="print-applicants">
+                <!-- 打印版申请人信息将通过JavaScript动态生成 -->
+            </div>
+
+            <div id="print-respondents" class="mb-8">
+                <!-- 打印版被申请人信息将通过JavaScript动态生成 -->
+            </div>
+
+            <div id="print-evidence" class="mb-8">
+                <!-- 打印版证据清单将通过JavaScript动态生成 -->
+            </div>
+
+            <div class="mt-16">
+                <div class="text-right mb-10">
+                    <p>申请人（签名或盖章）：</p>
+                    <p class="mt-12">年&emsp;月&emsp;日</p>
+                </div>
+                <div class="mt-20">
+                    <h3 class="text-xl font-bold text-center">此致</h3>
+                    <h3 class="text-xl font-bold text-center mt-8">永安市劳动人事争议仲裁委员会</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/scripts.js?v=7"></script>
+</body>
+</html>

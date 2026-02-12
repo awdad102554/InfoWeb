@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>劳动仲裁案件信息查询测试</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .card { transition: all 0.3s ease; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
+        .selected { border-color: #3b82f6; background-color: #eff6ff; }
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto max-w-6xl p-4">
+        <!-- 标题 -->
+        <header class="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl shadow-lg p-6 mb-6">
+            <h1 class="text-2xl font-bold text-center">
+                <i class="fas fa-search mr-2"></i>劳动仲裁案件信息查询测试
+            </h1>
+            <p class="text-center opacity-90 mt-2">根据收件编号查询案件完整信息，查看申请人、被申请人及证据详情</p>
+        </header>
+
+        <!-- 查询区域 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex flex-wrap items-center gap-4">
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-gray-700 text-sm font-medium mb-2">
+                        <i class="fas fa-hashtag mr-1 text-blue-600"></i>收件编号
+                    </label>
+                    <input type="text" id="receiptNumberInput" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+                        placeholder="请输入收件编号，如：20250211001">
+                </div>
+                <div class="flex gap-2 mt-6">
+                    <button onclick="queryCase()" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition duration-300">
+                        <i class="fas fa-search mr-2"></i>查询案件
+                    </button>
+                    <button onclick="clearQuery()" 
+                        class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-3 px-6 rounded-lg transition duration-300">
+                        <i class="fas fa-eraser mr-2"></i>清空
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 快捷测试按钮 -->
+            <div class="mt-4 pt-4 border-t border-gray-200">
+                <span class="text-sm text-gray-500 mr-3">快捷测试：</span>
+                <button onclick="quickQuery('20250211001')" 
+                    class="text-sm bg-green-100 hover:bg-green-200 text-green-700 py-1 px-3 rounded transition">
+                    测试数据：20250211001
+                </button>
+            </div>
+        </div>
+
+        <!-- 查询结果区域 -->
+        <div id="resultArea" class="hidden">
+            <!-- 案件基本信息 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6 fade-in">
+                <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">
+                    <i class="fas fa-folder-open mr-2 text-blue-600"></i>案件基本信息
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="caseBasicInfo">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 标签页切换 -->
+            <div class="bg-white rounded-xl shadow-lg mb-6">
+                <div class="flex border-b">
+                    <button onclick="switchTab('applicants')" id="tab-applicants" 
+                        class="flex-1 py-4 px-6 text-center font-medium hover:bg-gray-50 transition tab-active">
+                        <i class="fas fa-users mr-2"></i>申请人列表
+                    </button>
+                    <button onclick="switchTab('respondents')" id="tab-respondents" 
+                        class="flex-1 py-4 px-6 text-center font-medium hover:bg-gray-50 transition">
+                        <i class="fas fa-building mr-2"></i>被申请人列表
+                    </button>
+                    <button onclick="switchTab('evidence')" id="tab-evidence" 
+                        class="flex-1 py-4 px-6 text-center font-medium hover:bg-gray-50 transition">
+                        <i class="fas fa-file-alt mr-2"></i>证据清单
+                    </button>
+                </div>
+
+                <!-- 申请人列表 -->
+                <div id="panel-applicants" class="p-6">
+                    <div class="mb-4 text-sm text-gray-500">
+                        <i class="fas fa-info-circle mr-1"></i>点击申请人卡片查看详细信息及证据
+                    </div>
+                    <div id="applicantsList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+
+                <!-- 被申请人列表 -->
+                <div id="panel-respondents" class="p-6 hidden">
+                    <div class="mb-4 text-sm text-gray-500">
+                        <i class="fas fa-info-circle mr-1"></i>点击被申请人卡片查看详细信息
+                    </div>
+                    <div id="respondentsList" class="grid grid-cols-1 gap-4">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+
+                <!-- 证据清单 -->
+                <div id="panel-evidence" class="p-6 hidden">
+                    <div id="evidenceList" class="space-y-3">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 详细信息展示区域 -->
+            <div id="detailArea" class="hidden fade-in">
+                <!-- 申请人详情 -->
+                <div id="applicantDetail" class="hidden">
+                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h2 class="text-xl font-bold text-gray-800">
+                                <i class="fas fa-user mr-2 text-blue-600"></i>申请人详细信息
+                            </h2>
+                            <button onclick="closeDetail()" class="text-gray-500 hover:text-gray-700">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="applicantBasicInfo">
+                            <!-- 动态填充 -->
+                        </div>
+
+                        <!-- 入职信息 -->
+                        <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+                            <h3 class="font-bold text-gray-700 mb-3">
+                                <i class="fas fa-briefcase mr-2 text-orange-500"></i>入职信息
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="applicantWorkInfo">
+                                <!-- 动态填充 -->
+                            </div>
+                        </div>
+
+                        <!-- 仲裁请求 -->
+                        <div class="mt-6">
+                            <h3 class="font-bold text-gray-700 mb-3">
+                                <i class="fas fa-gavel mr-2 text-red-500"></i>仲裁请求
+                            </h3>
+                            <div id="applicantRequests" class="space-y-2">
+                                <!-- 动态填充 -->
+                            </div>
+                        </div>
+
+                        <!-- 事实与理由 -->
+                        <div class="mt-6">
+                            <h3 class="font-bold text-gray-700 mb-3">
+                                <i class="fas fa-file-alt mr-2 text-purple-500"></i>事实与理由
+                            </h3>
+                            <div id="applicantFacts" class="p-4 bg-gray-50 rounded-lg text-gray-700 leading-relaxed">
+                                <!-- 动态填充 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 相关证据 -->
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">
+                            <i class="fas fa-paperclip mr-2 text-green-600"></i>相关证据
+                        </h2>
+                        <div id="applicantEvidence" class="space-y-3">
+                            <!-- 动态填充 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 被申请人详情 -->
+                <div id="respondentDetail" class="hidden">
+                    <div class="bg-white rounded-xl shadow-lg p-6">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h2 class="text-xl font-bold text-gray-800">
+                                <i class="fas fa-building mr-2 text-orange-600"></i>被申请人详细信息
+                            </h2>
+                            <button onclick="closeDetail()" class="text-gray-500 hover:text-gray-700">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="respondentInfo">
+                            <!-- 动态填充 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 无结果提示 -->
+        <div id="noResult" class="hidden bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+            <i class="fas fa-exclamation-triangle text-yellow-500 text-3xl mb-2"></i>
+            <p class="text-gray-700">未找到该收件编号的案件信息</p>
+        </div>
+    </div>
+
+    <script>
+        // API基础地址
+        const API_BASE_URL = "/api";
+        
+        // 当前查询的数据缓存
+        let currentCaseData = null;
+        let currentCaseId = null;
+
+        // 查询案件
+        async function queryCase() {
+            const receiptNumber = document.getElementById('receiptNumberInput').value.trim();
+            if (!receiptNumber) {
+                alert('请输入收件编号！');
+                return;
+            }
+            await fetchCaseData(receiptNumber);
+        }
+
+        // 快捷查询
+        async function quickQuery(receiptNumber) {
+            document.getElementById('receiptNumberInput').value = receiptNumber;
+            await fetchCaseData(receiptNumber);
+        }
+
+        // 获取案件数据
+        async function fetchCaseData(receiptNumber) {
+            try {
+                // 这里模拟API调用，实际使用时替换为真实API
+                // const response = await fetch(`${API_BASE_URL}/cases/query?receipt_number=${receiptNumber}`);
+                // const result = await response.json();
+                
+                // 模拟数据（测试用）
+                await simulateAPICall(receiptNumber);
+                
+            } catch (error) {
+                console.error('查询失败:', error);
+                alert('查询失败，请检查网络连接');
+            }
+        }
+
+        // 模拟API调用（测试用，实际使用时删除此函数）
+        async function simulateAPICall(receiptNumber) {
+            // 模拟网络延迟
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            if (receiptNumber === '20250211001') {
+                currentCaseData = {
+                    case: {
+                        id: 1,
+                        receipt_number: '20250211001',
+                        create_time: '2026-02-11 10:14:12',
+                        status: 1
+                    },
+                    applicants: [
+                        {
+                            id: 1,
+                            seq_no: 1,
+                            name: '张三',
+                            gender: '男',
+                            nation: '汉族',
+                            birth_date: '1985年06月',
+                            address: '福建省永安市燕江路123号',
+                            phone: '13800138001',
+                            id_card: '350481198506151234',
+                            employment_date: '2020年03月',
+                            work_location: '永安科技有限公司',
+                            monthly_salary: '6000元',
+                            facts_reasons: '申请人于2020年3月入职被申请人单位，从事软件开发工作。被申请人自2024年10月起无故拖欠工资，至今已累计拖欠3个月工资共计18000元。申请人多次催讨未果，为维护自身合法权益，特向贵委申请仲裁。',
+                            requests: [
+                                { seq_no: 1, content: '请求裁决被申请人支付拖欠的工资18000元（2024年10月至12月，每月6000元）' },
+                                { seq_no: 2, content: '请求裁决被申请人支付经济补偿金24000元（4个月×6000元）' },
+                                { seq_no: 3, content: '请求裁决被申请人为申请人补缴2024年1月至12月的社会保险' }
+                            ]
+                        },
+                        {
+                            id: 2,
+                            seq_no: 2,
+                            name: '李四',
+                            gender: '女',
+                            nation: '汉族',
+                            birth_date: '1988年03月',
+                            address: '福建省永安市五四路456号',
+                            phone: '13900139002',
+                            id_card: '350481198803202345',
+                            employment_date: '2019年08月',
+                            work_location: '永安科技有限公司',
+                            monthly_salary: '5500元',
+                            facts_reasons: '申请人于2019年8月入职，担任行政主管一职。被申请人同样拖欠申请人2024年10月至12月工资共计16500元。申请人与张三系同事关系，遭遇相同。',
+                            requests: [
+                                { seq_no: 1, content: '请求裁决被申请人支付拖欠的工资16500元（2024年10月至12月，每月5500元）' },
+                                { seq_no: 2, content: '请求裁决被申请人支付经济补偿金22000元（4个月×5500元）' }
+                            ]
+                        }
+                    ],
+                    respondents: [
+                        {
+                            id: 1,
+                            seq_no: 1,
+                            name: '永安科技有限公司',
+                            legal_person: '王五',
+                            position: '总经理',
+                            address: '福建省永安市尼葛开发区科技大道88号',
+                            phone: '0598-12345678',
+                            unified_code: '91350481MA1234567X'
+                        }
+                    ],
+                    evidence: [
+                        { id: 1, seq_no: 1, name: '劳动合同', source: '申请人1提供', purpose: '证明申请人与被申请人之间存在劳动关系，约定了工作岗位和工资标准', page_range: '1-5', applicant_id: 1 },
+                        { id: 2, seq_no: 2, name: '工资银行流水', source: '申请人1提供', purpose: '证明被申请人拖欠工资的事实及具体金额', page_range: '6-10', applicant_id: 1 },
+                        { id: 3, seq_no: 3, name: '社保缴费记录', source: '申请人1提供', purpose: '证明被申请人未依法为申请人缴纳社会保险', page_range: '11-12', applicant_id: 1 },
+                        { id: 4, seq_no: 4, name: '微信催款记录', source: '申请人2提供', purpose: '证明申请人多次向被申请人催讨工资的事实', page_range: '13-15', applicant_id: 2 }
+                    ]
+                };
+                currentCaseId = 1;
+                displayCaseInfo();
+            } else {
+                // 显示无结果
+                document.getElementById('resultArea').classList.add('hidden');
+                document.getElementById('noResult').classList.remove('hidden');
+            }
+        }
+
+        // 显示案件信息
+        function displayCaseInfo() {
+            document.getElementById('noResult').classList.add('hidden');
+            document.getElementById('resultArea').classList.remove('hidden');
+            document.getElementById('detailArea').classList.add('hidden');
+
+            // 案件基本信息
+            const caseInfo = currentCaseData.case;
+            document.getElementById('caseBasicInfo').innerHTML = `
+                <div class="bg-blue-50 p-4 rounded-lg">
+                    <div class="text-sm text-gray-500">案件ID</div>
+                    <div class="text-lg font-bold text-blue-700">${caseInfo.id}</div>
+                </div>
+                <div class="bg-green-50 p-4 rounded-lg">
+                    <div class="text-sm text-gray-500">收件编号</div>
+                    <div class="text-lg font-bold text-green-700">${caseInfo.receipt_number}</div>
+                </div>
+                <div class="bg-purple-50 p-4 rounded-lg">
+                    <div class="text-sm text-gray-500">创建时间</div>
+                    <div class="text-lg font-bold text-purple-700">${caseInfo.create_time}</div>
+                </div>
+                <div class="bg-orange-50 p-4 rounded-lg">
+                    <div class="text-sm text-gray-500">数据概况</div>
+                    <div class="text-lg font-bold text-orange-700">
+                        ${currentCaseData.applicants.length}申请人 / 
+                        ${currentCaseData.respondents.length}被申请人 / 
+                        ${currentCaseData.evidence.length}证据
+                    </div>
+                </div>
+            `;
+
+            // 申请人列表
+            displayApplicantsList();
+
+            // 被申请人列表
+            displayRespondentsList();
+
+            // 证据清单
+            displayEvidenceList();
+        }
+
+        // 显示申请人列表
+        function displayApplicantsList() {
+            const container = document.getElementById('applicantsList');
+            container.innerHTML = currentCaseData.applicants.map(app => {
+                // 统计该申请人的证据数量
+                const evidenceCount = currentCaseData.evidence.filter(evi => evi.applicant_id === app.id).length;
+                return `
+                <div class="card bg-white border-2 border-gray-200 rounded-lg p-4 cursor-pointer hover:border-blue-400" 
+                     onclick="showApplicantDetail(${app.id})">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center">
+                            <span class="bg-blue-100 text-blue-700 text-sm font-bold px-2 py-1 rounded mr-2">
+                                申请人${app.seq_no}
+                            </span>
+                            <h3 class="font-bold text-lg text-gray-800">${app.name}</h3>
+                        </div>
+                        <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <div><i class="fas fa-venus-mars mr-2 w-4 text-center"></i>${app.gender} | ${app.nation}</div>
+                        <div><i class="fas fa-phone mr-2 w-4 text-center"></i>${app.phone}</div>
+                        <div><i class="fas fa-id-card mr-2 w-4 text-center"></i>${app.id_card}</div>
+                        <div><i class="fas fa-briefcase mr-2 w-4 text-center"></i>${app.work_location}</div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-gray-100 flex gap-2">
+                        <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
+                            <i class="fas fa-gavel mr-1"></i>${app.requests.length} 项仲裁请求
+                        </span>
+                        <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                            <i class="fas fa-paperclip mr-1"></i>${evidenceCount} 份证据
+                        </span>
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
+        // 显示被申请人列表
+        function displayRespondentsList() {
+            const container = document.getElementById('respondentsList');
+            container.innerHTML = currentCaseData.respondents.map(resp => `
+                <div class="card bg-white border-2 border-gray-200 rounded-lg p-4 cursor-pointer hover:border-orange-400" 
+                     onclick="showRespondentDetail(${resp.id})">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center">
+                            <span class="bg-orange-100 text-orange-700 text-sm font-bold px-2 py-1 rounded mr-2">
+                                被申请人${resp.seq_no}
+                            </span>
+                            <h3 class="font-bold text-lg text-gray-800">${resp.name}</h3>
+                        </div>
+                        <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <div><i class="fas fa-user-tie mr-2 w-4 text-center"></i>法定代表人：${resp.legal_person}（${resp.position}）</div>
+                        <div><i class="fas fa-phone mr-2 w-4 text-center"></i>${resp.phone}</div>
+                        <div><i class="fas fa-map-marker-alt mr-2 w-4 text-center"></i>${resp.address}</div>
+                        <div><i class="fas fa-barcode mr-2 w-4 text-center"></i>${resp.unified_code}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 显示证据清单
+        function displayEvidenceList() {
+            const container = document.getElementById('evidenceList');
+            container.innerHTML = currentCaseData.evidence.map((evi, index) => `
+                <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex-shrink-0">
+                        <span class="bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full">
+                            证据${toChineseNumber(index + 1)}
+                        </span>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-start">
+                            <h4 class="font-bold text-gray-800">${evi.name}</h4>
+                            <span class="text-sm text-gray-500">页码：${evi.page_range}</span>
+                        </div>
+                        <div class="text-sm text-gray-600 mt-1">
+                            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded">${evi.source}</span>
+                        </div>
+                        <div class="text-sm text-gray-700 mt-2">${evi.purpose}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 显示申请人详情
+        function showApplicantDetail(applicantId) {
+            const applicant = currentCaseData.applicants.find(a => a.id === applicantId);
+            if (!applicant) return;
+
+            // 高亮选中的卡片
+            document.querySelectorAll('#applicantsList .card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+
+            // 填充基本信息
+            document.getElementById('applicantBasicInfo').innerHTML = `
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">姓名</div>
+                    <div class="text-lg font-medium">${applicant.name}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">性别</div>
+                    <div class="text-lg font-medium">${applicant.gender}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">民族</div>
+                    <div class="text-lg font-medium">${applicant.nation}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">出生年月</div>
+                    <div class="text-lg font-medium">${applicant.birth_date}</div>
+                </div>
+                <div class="md:col-span-2">
+                    <div class="text-sm text-gray-500 mb-1">住址</div>
+                    <div class="text-lg font-medium">${applicant.address}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">联系电话</div>
+                    <div class="text-lg font-medium">${applicant.phone}</div>
+                </div>
+                <div class="md:col-span-2">
+                    <div class="text-sm text-gray-500 mb-1">身份证号码</div>
+                    <div class="text-lg font-medium">${applicant.id_card}</div>
+                </div>
+            `;
+
+            // 填充入职信息
+            document.getElementById('applicantWorkInfo').innerHTML = `
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">入职时间</div>
+                    <div class="font-medium">${applicant.employment_date}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">工作地点</div>
+                    <div class="font-medium">${applicant.work_location}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">月工资</div>
+                    <div class="font-medium text-red-600">${applicant.monthly_salary}</div>
+                </div>
+            `;
+
+            // 填充仲裁请求
+            document.getElementById('applicantRequests').innerHTML = applicant.requests.map(req => `
+                <div class="p-3 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
+                    <span class="text-sm font-bold text-red-700">请求${req.seq_no}：</span>
+                    <span class="text-gray-700">${req.content}</span>
+                </div>
+            `).join('');
+
+            // 填充事实与理由
+            document.getElementById('applicantFacts').innerHTML = applicant.facts_reasons;
+
+            // 填充相关证据（只显示该申请人的证据）
+            const applicantEvidence = currentCaseData.evidence.filter(evi => evi.applicant_id === applicantId);
+            if (applicantEvidence.length > 0) {
+                document.getElementById('applicantEvidence').innerHTML = applicantEvidence.map((evi, index) => `
+                    <div class="flex items-start gap-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                        <div class="flex-shrink-0">
+                            <span class="bg-green-600 text-white font-bold px-3 py-1 rounded-full">
+                                证据${toChineseNumber(index + 1)}
+                            </span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-start">
+                                <h4 class="font-bold text-gray-800">${evi.name}</h4>
+                                <span class="text-sm text-gray-500">页码：${evi.page_range}</span>
+                            </div>
+                            <div class="text-sm text-gray-600 mt-1">
+                                <span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded">${evi.source}</span>
+                            </div>
+                            <div class="text-sm text-gray-700 mt-2">${evi.purpose}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('applicantEvidence').innerHTML = `
+                    <div class="p-4 bg-gray-100 rounded-lg text-center text-gray-500">
+                        <i class="fas fa-info-circle mr-2"></i>该申请人暂未提供证据
+                    </div>
+                `;
+            }
+
+            // 显示详情区域
+            document.getElementById('detailArea').classList.remove('hidden');
+            document.getElementById('applicantDetail').classList.remove('hidden');
+            document.getElementById('respondentDetail').classList.add('hidden');
+            
+            // 滚动到详情区域
+            document.getElementById('detailArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // 显示被申请人详情
+        function showRespondentDetail(respondentId) {
+            const respondent = currentCaseData.respondents.find(r => r.id === respondentId);
+            if (!respondent) return;
+
+            // 高亮选中的卡片
+            document.querySelectorAll('#respondentsList .card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+
+            // 填充被申请人信息
+            document.getElementById('respondentInfo').innerHTML = `
+                <div class="bg-orange-50 p-4 rounded-lg">
+                    <div class="text-sm text-gray-500 mb-1">单位名称</div>
+                    <div class="text-xl font-bold text-orange-700">${respondent.name}</div>
+                </div>
+                <div class="bg-blue-50 p-4 rounded-lg">
+                    <div class="text-sm text-gray-500 mb-1">统一社会信用代码</div>
+                    <div class="text-lg font-medium text-blue-700">${respondent.unified_code}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">法定代表人</div>
+                    <div class="text-lg font-medium">${respondent.legal_person}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">职务</div>
+                    <div class="text-lg font-medium">${respondent.position}</div>
+                </div>
+                <div class="md:col-span-2">
+                    <div class="text-sm text-gray-500 mb-1">住所</div>
+                    <div class="text-lg font-medium">${respondent.address}</div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 mb-1">联系电话</div>
+                    <div class="text-lg font-medium">${respondent.phone}</div>
+                </div>
+            `;
+
+            // 显示详情区域
+            document.getElementById('detailArea').classList.remove('hidden');
+            document.getElementById('respondentDetail').classList.remove('hidden');
+            document.getElementById('applicantDetail').classList.add('hidden');
+            
+            // 滚动到详情区域
+            document.getElementById('detailArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // 关闭详情
+        function closeDetail() {
+            document.getElementById('detailArea').classList.add('hidden');
+            document.querySelectorAll('.card').forEach(card => {
+                card.classList.remove('selected');
+            });
+        }
+
+        // 切换标签页
+        function switchTab(tab) {
+            // 更新标签样式
+            ['applicants', 'respondents', 'evidence'].forEach(t => {
+                const btn = document.getElementById('tab-' + t);
+                const panel = document.getElementById('panel-' + t);
+                if (t === tab) {
+                    btn.classList.add('tab-active');
+                    panel.classList.remove('hidden');
+                } else {
+                    btn.classList.remove('tab-active');
+                    panel.classList.add('hidden');
+                }
+            });
+        }
+
+        // 清空查询
+        function clearQuery() {
+            document.getElementById('receiptNumberInput').value = '';
+            document.getElementById('resultArea').classList.add('hidden');
+            document.getElementById('noResult').classList.add('hidden');
+            currentCaseData = null;
+            currentCaseId = null;
+        }
+
+        // 数字转中文
+        function toChineseNumber(num) {
+            const chineseNums = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+            if (num <= 10) {
+                return chineseNums[num - 1];
+            } else if (num < 20) {
+                return '十' + (num % 10 === 0 ? '' : chineseNums[num % 10 - 1]);
+            } else if (num < 100) {
+                const tens = Math.floor(num / 10);
+                const ones = num % 10;
+                return chineseNums[tens - 1] + '十' + (ones === 0 ? '' : chineseNums[ones - 1]);
+            }
+            return num.toString();
+        }
+
+        // 页面加载完成后，如果URL有参数自动查询
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const receiptNumber = urlParams.get('receipt_number');
+            if (receiptNumber) {
+                document.getElementById('receiptNumberInput').value = receiptNumber;
+                quickQuery(receiptNumber);
+            }
+        });
+    </script>
+</body>
+</html>

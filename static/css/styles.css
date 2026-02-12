@@ -1,0 +1,208 @@
+/* 表单部分样式 */
+.form-section {
+    transition: all 0.3s ease;
+}
+
+.form-section:hover {
+    transform: translateY(-2px);
+}
+
+.form-header {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+}
+
+.print-only {
+    display: none;
+}
+
+@media print {
+    .no-print {
+        display: none;
+    }
+    
+    .print-only {
+        display: block;
+    }
+    
+    .form-section {
+        break-inside: avoid;
+        border: 1px solid #ddd !important;
+    }
+    
+    body {
+        font-size: 14px;
+        line-height: 1.5;
+    }
+}
+
+/* 动画效果 */
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(10px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+/* 按钮样式 */
+.btn {
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 表单输入框样式 */
+.form-input {
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    transition: all 0.2s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    ring-width: 2px;
+    ring-color: #3b82f6;
+    border-color: transparent;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 1rem;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    max-width: 56rem;
+    width: 100%;
+    max-height: 90vh;
+    overflow: auto;
+}
+
+/* 打印样式增强 */
+@media print {
+    @page {
+        margin: 0.5in;
+    }
+    
+    h1, h2, h3, h4 {
+        page-break-after: avoid;
+    }
+    
+    table, figure {
+        page-break-inside: avoid;
+    }
+    
+    .page-break {
+        page-break-before: always;
+    }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .modal-content {
+        margin: 0.5rem;
+        padding: 0.5rem;
+    }
+    
+    .grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+    
+    .md\:col-span-2 {
+        grid-column: span 1;
+    }
+}
+
+/* 加载动画 */
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* 表单验证样式 */
+.input-error {
+    border-color: #ef4444;
+    ring-color: #ef4444;
+}
+
+.input-success {
+    border-color: #10b981;
+    ring-color: #10b981;
+}
+
+.error-message {
+    color: #ef4444;
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.success-message {
+    color: #10b981;
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+/* 工具类 */
+.shadow-soft {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.shadow-medium {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-hard {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* 边框样式 */
+.border-light {
+    border-color: #e5e7eb;
+}
+
+.border-medium {
+    border-color: #d1d5db;
+}
+
+.border-heavy {
+    border-color: #9ca3af;
+}
+
+/* 背景色 */
+.bg-gradient-blue {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+}
+
+.bg-gradient-green {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.bg-gradient-purple {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+}

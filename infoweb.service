@@ -1,0 +1,16 @@
+[Unit]
+Description=劳动仲裁信息查询综合服务平台
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/vol2/1000/python-project/InfoWeb
+Environment="PATH=/vol2/1000/python-project/InfoWeb/venv/bin"
+ExecStart=/vol2/1000/python-project/InfoWeb/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 60 --access-logfile /var/log/infoweb/access.log --error-logfile /var/log/infoweb/error.log app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
