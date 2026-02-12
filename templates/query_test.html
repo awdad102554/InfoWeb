@@ -22,9 +22,17 @@
     <div class="container mx-auto max-w-6xl p-4">
         <!-- 标题 -->
         <header class="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl shadow-lg p-6 mb-6">
-            <h1 class="text-2xl font-bold text-center">
-                <i class="fas fa-search mr-2"></i>劳动仲裁案件信息查询测试
-            </h1>
+            <div class="flex justify-between items-center">
+                <a href="/cases" class="text-white hover:text-gray-200 transition">
+                    <i class="fas fa-arrow-left mr-2"></i>返回案件管理
+                </a>
+                <h1 class="text-2xl font-bold text-center flex-1">
+                    <i class="fas fa-search mr-2"></i>劳动仲裁案件信息查询
+                </h1>
+                <a href="/" class="text-white hover:text-gray-200 transition">
+                    <i class="fas fa-plus mr-2"></i>新建案件
+                </a>
+            </div>
             <p class="text-center opacity-90 mt-2">根据收件编号查询案件完整信息，查看申请人、被申请人及证据详情</p>
         </header>
 
