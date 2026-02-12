@@ -430,7 +430,7 @@ function addEvidence() {
         source: '',
         purpose: '',
         pageRange: '',
-        applicantId: ''
+        applicantSeqNo: ''
     };
     formData.evidence.push(evidence);
     renderEvidence(index);
@@ -479,7 +479,7 @@ function renderEvidence(index) {
                 <select class="evidence-applicant w-full px-2 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm">
                     <option value="">请选择申请人</option>
                     ${formData.applicants.map((app, idx) => `
-                        <option value="${idx + 1}" ${evidence.applicantId == idx + 1 ? 'selected' : ''}>申请人${idx + 1}${app.name ? '：' + app.name : ''}</option>
+                        <option value="${idx + 1}" ${evidence.applicantSeqNo == idx + 1 ? 'selected' : ''}>申请人${idx + 1}${app.name ? '：' + app.name : ''}</option>
                     `).join('')}
                 </select>
             </div>
@@ -586,17 +586,17 @@ function collectDataFromDOM() {
             pageRange = pageEnd;
         }
         const applicantSelect = item.querySelector('.evidence-applicant');
-        const applicantId = applicantSelect ? applicantSelect.value : '';
-        const applicantIndex = applicantId ? parseInt(applicantId) - 1 : -1;
+        const applicantSeqNo = applicantSelect ? applicantSelect.value : '';
+        const applicantIndex = applicantSeqNo ? parseInt(applicantSeqNo) - 1 : -1;
         const applicantName = applicantIndex >= 0 && formData.applicants[applicantIndex] ? 
             formData.applicants[applicantIndex].name : '';
         
         formData.evidence.push({
             name: item.querySelector('.evidence-name').value,
-            source: applicantName ? `申请人${applicantId}(${applicantName})提供` : '',
+            source: applicantName ? `申请人${applicantSeqNo}(${applicantName})提供` : '',
             purpose: item.querySelector('.evidence-purpose').value,
             pageRange: pageRange,
-            applicantId: applicantId
+            applicantSeqNo: applicantSeqNo
         });
     });
 }
@@ -661,7 +661,7 @@ async function saveData() {
                 source: evi.source,
                 purpose: evi.purpose,
                 page_range: evi.pageRange,
-                applicant_id: evi.applicantId ? parseInt(evi.applicantId) : null
+                applicant_seq_no: evi.applicantSeqNo ? parseInt(evi.applicantSeqNo) : null
             }))
         };
         
@@ -732,14 +732,14 @@ function loadSavedData() {
             });
         }
 
-        // 证据数据兼容性处理：确保 pageRange 和 applicantId 字段存在
+        // 证据数据兼容性处理：确保 pageRange 和 applicantSeqNo 字段存在
         if (formData.evidence) {
             formData.evidence.forEach(evidence => {
                 if (evidence.pageRange === undefined) {
                     evidence.pageRange = '';
                 }
-                if (evidence.applicantId === undefined) {
-                    evidence.applicantId = '';
+                if (evidence.applicantSeqNo === undefined) {
+                    evidence.applicantSeqNo = '';
                 }
             });
         }

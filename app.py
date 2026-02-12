@@ -281,12 +281,32 @@ def save_case():
     cursor = conn.cursor()
     
     try:
-        # 1. 插入案件主表
+        # 1. 插入或更新案件主表（根据 receipt_number 唯一性）
         cursor.execute(
-            "INSERT INTO cases (receipt_number) VALUES (%s)",
+            "SELECT id FROM cases WHERE receipt_number = %s AND status = 1",
             (receipt_number,)
         )
-        case_id = cursor.lastrowid
+        existing_case = cursor.fetchone()
+        
+        if existing_case:
+            # 更新现有案件
+            case_id = existing_case[0]
+            cursor.execute(
+                "UPDATE cases SET update_time = NOW() WHERE id = %s",
+                (case_id,)
+            )
+            # 删除旧的关联数据，重新插入
+            cursor.execute("DELETE FROM arbitration_requests WHERE case_id = %s", (case_id,))
+            cursor.execute("DELETE FROM evidence WHERE case_id = %s", (case_id,))
+            cursor.execute("DELETE FROM respondents WHERE case_id = %s", (case_id,))
+            cursor.execute("DELETE FROM applicants WHERE case_id = %s", (case_id,))
+        else:
+            # 插入新案件
+            cursor.execute(
+                "INSERT INTO cases (receipt_number) VALUES (%s)",
+                (receipt_number,)
+            )
+            case_id = cursor.lastrowid
         
         # 2. 插入申请人及其仲裁请求
         # 建立 seq_no -> applicant_id 映射，用于证据关联
@@ -339,9 +359,13 @@ def save_case():
                 page_start = parts[0]
                 page_end = parts[1] if len(parts) > 1 else ''
             
-            # 前端传来的是 seq_no，需要转换为真正的 applicant_id
-            evi_applicant_seq = evi.get('applicant_id')
+            # 前端传来的是 applicant_seq_no，需要转换为真正的 applicant_id
+            evi_applicant_seq = evi.get('applicant_seq_no')
             evi_applicant_id = applicant_seq_to_id.get(evi_applicant_seq) if evi_applicant_seq else None
+            
+            # 验证申请人存在性
+            if evi_applicant_seq and evi_applicant_id is None:
+                raise ValueError(f"证据 '{evi.get('name')}' 关联的申请人序号 {evi_applicant_seq} 不存在")
             
             cursor.execute("""
                 INSERT INTO evidence (
