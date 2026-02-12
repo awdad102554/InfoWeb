@@ -232,98 +232,20 @@
         // 获取案件数据
         async function fetchCaseData(receiptNumber) {
             try {
-                // 这里模拟API调用，实际使用时替换为真实API
-                // const response = await fetch(`${API_BASE_URL}/cases/query?receipt_number=${receiptNumber}`);
-                // const result = await response.json();
+                const response = await fetch(`${API_BASE_URL}/cases/query?receipt_number=${receiptNumber}`);
+                const result = await response.json();
                 
-                // 模拟数据（测试用）
-                await simulateAPICall(receiptNumber);
-                
+                if (result.success) {
+                    currentCaseData = result.data;
+                    currentCaseId = result.data.case.id;
+                    displayCaseInfo();
+                } else {
+                    document.getElementById('resultArea').classList.add('hidden');
+                    document.getElementById('noResult').classList.remove('hidden');
+                }
             } catch (error) {
                 console.error('查询失败:', error);
                 alert('查询失败，请检查网络连接');
-            }
-        }
-
-        // 模拟API调用（测试用，实际使用时删除此函数）
-        async function simulateAPICall(receiptNumber) {
-            // 模拟网络延迟
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            if (receiptNumber === '20250211001') {
-                currentCaseData = {
-                    case: {
-                        id: 1,
-                        receipt_number: '20250211001',
-                        create_time: '2026-02-11 10:14:12',
-                        status: 1
-                    },
-                    applicants: [
-                        {
-                            id: 1,
-                            seq_no: 1,
-                            name: '张三',
-                            gender: '男',
-                            nation: '汉族',
-                            birth_date: '1985年06月',
-                            address: '福建省永安市燕江路123号',
-                            phone: '13800138001',
-                            id_card: '350481198506151234',
-                            employment_date: '2020年03月',
-                            work_location: '永安科技有限公司',
-                            monthly_salary: '6000元',
-                            facts_reasons: '申请人于2020年3月入职被申请人单位，从事软件开发工作。被申请人自2024年10月起无故拖欠工资，至今已累计拖欠3个月工资共计18000元。申请人多次催讨未果，为维护自身合法权益，特向贵委申请仲裁。',
-                            requests: [
-                                { seq_no: 1, content: '请求裁决被申请人支付拖欠的工资18000元（2024年10月至12月，每月6000元）' },
-                                { seq_no: 2, content: '请求裁决被申请人支付经济补偿金24000元（4个月×6000元）' },
-                                { seq_no: 3, content: '请求裁决被申请人为申请人补缴2024年1月至12月的社会保险' }
-                            ]
-                        },
-                        {
-                            id: 2,
-                            seq_no: 2,
-                            name: '李四',
-                            gender: '女',
-                            nation: '汉族',
-                            birth_date: '1988年03月',
-                            address: '福建省永安市五四路456号',
-                            phone: '13900139002',
-                            id_card: '350481198803202345',
-                            employment_date: '2019年08月',
-                            work_location: '永安科技有限公司',
-                            monthly_salary: '5500元',
-                            facts_reasons: '申请人于2019年8月入职，担任行政主管一职。被申请人同样拖欠申请人2024年10月至12月工资共计16500元。申请人与张三系同事关系，遭遇相同。',
-                            requests: [
-                                { seq_no: 1, content: '请求裁决被申请人支付拖欠的工资16500元（2024年10月至12月，每月5500元）' },
-                                { seq_no: 2, content: '请求裁决被申请人支付经济补偿金22000元（4个月×5500元）' }
-                            ]
-                        }
-                    ],
-                    respondents: [
-                        {
-                            id: 1,
-                            seq_no: 1,
-                            name: '永安科技有限公司',
-                            legal_person: '王五',
-                            position: '总经理',
-                            address: '福建省永安市尼葛开发区科技大道88号',
-                            phone: '0598-12345678',
-                            unified_code: '91350481MA1234567X'
-                        }
-                    ],
-                    evidence: [
-                        { id: 1, seq_no: 1, name: '劳动合同', source: '申请人1提供', purpose: '证明申请人与被申请人之间存在劳动关系，约定了工作岗位和工资标准', page_range: '1-5', applicant_id: 1 },
-                        { id: 2, seq_no: 2, name: '工资银行流水', source: '申请人1提供', purpose: '证明被申请人拖欠工资的事实及具体金额', page_range: '6-10', applicant_id: 1 },
-                        { id: 3, seq_no: 3, name: '社保缴费记录', source: '申请人1提供', purpose: '证明被申请人未依法为申请人缴纳社会保险', page_range: '11-12', applicant_id: 1 },
-                        { id: 4, seq_no: 4, name: '微信催款记录', source: '申请人2提供', purpose: '证明申请人多次向被申请人催讨工资的事实', page_range: '13-15', applicant_id: 2 }
-                    ]
-                };
-                currentCaseId = 1;
-                displayCaseInfo();
-            } else {
-                // 显示无结果
-                document.getElementById('resultArea').classList.add('hidden');
-                document.getElementById('noResult').classList.remove('hidden');
             }
         }
 

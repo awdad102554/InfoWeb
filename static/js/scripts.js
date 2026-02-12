@@ -425,7 +425,8 @@ function addEvidence() {
         name: '',
         source: '',
         purpose: '',
-        pageRange: ''
+        pageRange: '',
+        applicantId: ''
     };
     formData.evidence.push(evidence);
     renderEvidence(index);
@@ -469,9 +470,14 @@ function renderEvidence(index) {
                 <label class="block text-gray-700 text-sm font-medium mb-1">证据名称</label>
                 <input type="text" class="evidence-name w-full px-2 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm" placeholder="如：劳动合同" value="${evidence.name}">
             </div>
-            <div style="width: 250px">
-                <label class="block text-gray-700 text-sm font-medium mb-1">证据来源</label>
-                <input type="text" class="evidence-source w-full px-2 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm" placeholder="如：申请人提供" value="${evidence.source}">
+            <div style="width: 200px">
+                <label class="block text-gray-700 text-sm font-medium mb-1">证据来源 <span class="text-red-500">*</span></label>
+                <select class="evidence-applicant w-full px-2 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm">
+                    <option value="">请选择申请人</option>
+                    ${formData.applicants.map((app, idx) => `
+                        <option value="${idx + 1}" ${evidence.applicantId == idx + 1 ? 'selected' : ''}>申请人${idx + 1}：${app.name || '未命名'}</option>
+                    `).join('')}
+                </select>
             </div>
             <div style="width: 250px">
                 <label class="block text-gray-700 text-sm font-medium mb-1">证明内容</label>
@@ -575,11 +581,18 @@ function collectDataFromDOM() {
         } else if (pageEnd) {
             pageRange = pageEnd;
         }
+        const applicantSelect = item.querySelector('.evidence-applicant');
+        const applicantId = applicantSelect ? applicantSelect.value : '';
+        const applicantIndex = applicantId ? parseInt(applicantId) - 1 : -1;
+        const applicantName = applicantIndex >= 0 && formData.applicants[applicantIndex] ? 
+            formData.applicants[applicantIndex].name : '';
+        
         formData.evidence.push({
             name: item.querySelector('.evidence-name').value,
-            source: item.querySelector('.evidence-source').value,
+            source: applicantName ? `申请人${applicantId}(${applicantName})提供` : '',
             purpose: item.querySelector('.evidence-purpose').value,
-            pageRange: pageRange
+            pageRange: pageRange,
+            applicantId: applicantId
         });
     });
 }
@@ -644,7 +657,7 @@ async function saveData() {
                 source: evi.source,
                 purpose: evi.purpose,
                 page_range: evi.pageRange,
-                applicant_id: null  // 证据暂时不关联特定申请人
+                applicant_id: evi.applicantId ? parseInt(evi.applicantId) : null
             }))
         };
         
@@ -715,11 +728,14 @@ function loadSavedData() {
             });
         }
 
-        // 证据数据兼容性处理：确保 pageRange 字段存在
+        // 证据数据兼容性处理：确保 pageRange 和 applicantId 字段存在
         if (formData.evidence) {
             formData.evidence.forEach(evidence => {
                 if (evidence.pageRange === undefined) {
                     evidence.pageRange = '';
+                }
+                if (evidence.applicantId === undefined) {
+                    evidence.applicantId = '';
                 }
             });
         }
