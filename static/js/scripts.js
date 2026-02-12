@@ -27,19 +27,19 @@ document.addEventListener('DOMContentLoaded', function() {
         editMode.caseId = caseId;
         loadCaseForEdit(caseId);
     } else {
-        // 新增模式：加载本地保存的数据
-        loadSavedData();
+        // 新增模式：清空本地缓存，创建空白表单
+        localStorage.removeItem('laborArbitrationFormData');
+        formData = {
+            receiptNumber: '',
+            applicants: [],
+            respondents: [],
+            evidence: []
+        };
         
-        // 初始化：如果没有数据，添加一个默认的申请人和被申请人
-        if (formData.applicants.length === 0) {
-            addApplicant();
-        }
-        if (formData.respondents.length === 0) {
-            addRespondent();
-        }
-        if (formData.evidence.length === 0) {
-            addEvidence();
-        }
+        // 初始化空白表单
+        addApplicant();
+        addRespondent();
+        addEvidence();
     }
 
     // 添加申请人按钮
