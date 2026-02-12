@@ -177,7 +177,7 @@ function renderApplicant(index) {
             <h3 class="text-lg font-bold text-blue-800">
                 <i class="fas fa-user mr-2"></i>申请人 ${index + 1}
             </h3>
-            ${index > 0 ? `
+            ${formData.applicants.length > 1 ? `
             <button class="remove-applicant text-red-500 hover:text-red-700 no-print" title="删除此申请人">
                 <i class="fas fa-trash-alt"></i>
             </button>
@@ -260,7 +260,7 @@ function renderApplicant(index) {
                     <div class="request-item mb-2 p-3 border border-gray-300 rounded-lg bg-white" data-request-index="${reqIndex}">
                         <div class="flex justify-between items-center mb-2">
                             <span class="font-medium text-blue-600 text-sm">请求 ${reqIndex + 1}</span>
-                            ${reqIndex > 0 ? `
+                            ${applicant.requests.length > 1 ? `
                             <button class="remove-applicant-request text-red-500 hover:text-red-700 text-sm no-print" data-applicant-index="${index}" data-request-index="${reqIndex}">
                                 <i class="fas fa-times"></i>
                             </button>
@@ -293,12 +293,51 @@ function removeApplicant(index) {
         alert('至少需要一个申请人！');
         return;
     }
-    if (!confirm(`确定要删除申请人 ${index + 1} 吗？`)) {
-        return;
-    }
-    // 先收集当前表单数据，避免丢失已填写的信息
+    
+    // 先收集当前表单数据
     collectDataFromDOM();
+    
+    // 检查是否有证据关联到该申请人
+    const applicantSeqNo = index + 1;
+    const relatedEvidence = formData.evidence.filter(evi => 
+        parseInt(evi.applicantSeqNo) === applicantSeqNo
+    );
+    
+    if (relatedEvidence.length > 0) {
+        const eviNames = relatedEvidence.map(e => e.name || '未命名证据').join('、');
+        if (!confirm(`申请人 ${index + 1} 有关联的证据：${eviNames}\n\n删除申请人后，这些证据将变为"未关联"状态。\n确定要删除吗？`)) {
+            return;
+        }
+        // 将关联的证据置为未关联
+        formData.evidence.forEach(evi => {
+            if (parseInt(evi.applicantSeqNo) === applicantSeqNo) {
+                evi.applicantSeqNo = '';
+            }
+        });
+    } else {
+        if (!confirm(`确定要删除申请人 ${index + 1} 吗？`)) {
+            return;
+        }
+    }
+    
+    // 删除申请人
     formData.applicants.splice(index, 1);
+    
+    // 重新排序剩余申请人的序号，并更新证据关联
+    formData.applicants.forEach((app, idx) => {
+        const oldSeqNo = app.seq_no;
+        const newSeqNo = idx + 1;
+        if (oldSeqNo !== newSeqNo) {
+            // 更新证据关联
+            formData.evidence.forEach(evi => {
+                if (parseInt(evi.applicantSeqNo) === oldSeqNo) {
+                    evi.applicantSeqNo = String(newSeqNo);
+                }
+            });
+            app.seq_no = newSeqNo;
+        }
+    });
+    
     refreshApplicantsList();
 }
 
@@ -368,7 +407,7 @@ function renderRespondent(index) {
             <h3 class="text-lg font-bold text-orange-800">
                 <i class="fas fa-building mr-2"></i>被申请人 ${index + 1}
             </h3>
-            ${index > 0 ? `
+            ${formData.respondents.length > 1 ? `
             <button class="remove-respondent text-red-500 hover:text-red-700 no-print" title="删除此被申请人">
                 <i class="fas fa-trash-alt"></i>
             </button>
@@ -490,7 +529,7 @@ function renderEvidence(index) {
     evidenceDiv.innerHTML = `
         <div class="flex justify-between items-center mb-2">
             <span class="font-medium text-blue-600">证据${toChineseNumber(index + 1)}</span>
-            ${index > 0 ? `
+            ${formData.evidence.length > 1 ? `
             <button class="remove-evidence text-red-500 hover:text-red-700 no-print" title="删除此证据">
                 <i class="fas fa-times"></i>
             </button>
