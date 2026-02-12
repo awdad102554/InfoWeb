@@ -585,9 +585,9 @@
         document.addEventListener('DOMContentLoaded', function() {
             const urlParams = new URLSearchParams(window.location.search);
             const receiptNumber = urlParams.get('receipt_number');
-            if (receiptNumber) {
-                document.getElementById('receiptNumberInput').value = receiptNumber;
-                quickQuery(receiptNumber);
+            if (receiptNumber && receiptNumber.trim()) {
+                document.getElementById('receiptNumberInput').value = receiptNumber.trim();
+                quickQuery(receiptNumber.trim());
             }
         });
     </script>
