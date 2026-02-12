@@ -288,6 +288,9 @@ def save_case():
     if not receipt_number:
         return jsonify({'success': False, 'error': '收件编号不能为空'}), 400
     
+    if not applicants or len(applicants) == 0:
+        return jsonify({'success': False, 'error': '至少需要一个申请人'}), 400
+    
     conn = get_labor_db_connection()
     cursor = conn.cursor()
     
@@ -646,6 +649,17 @@ def delete_case(case_id):
     cursor = conn.cursor()
     
     try:
+        # 先检查案件是否存在且未删除
+        cursor.execute(
+            "SELECT id FROM cases WHERE id = %s AND status = 1",
+            (case_id,)
+        )
+        case = cursor.fetchone()
+        
+        if not case:
+            return jsonify({'success': False, 'error': '案件不存在或已被删除'}), 404
+        
+        # 执行软删除
         cursor.execute(
             "UPDATE cases SET status = 0 WHERE id = %s",
             (case_id,)
