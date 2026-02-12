@@ -645,6 +645,8 @@ async function saveData() {
         // 转换数据格式以匹配后端API
         const apiData = {
             receipt_number: formData.receiptNumber,
+            mode: editMode.isEditing ? 'update' : 'create',  // 区分新建/编辑模式
+            case_id: editMode.isEditing ? editMode.caseId : null,
             applicants: formData.applicants.map((app, index) => ({
                 seq_no: index + 1,
                 name: app.name,
@@ -700,10 +702,15 @@ async function saveData() {
             if (editMode.isEditing) {
                 alert('案件更新成功！');
             } else {
-                alert('数据保存成功！收件编号：' + formData.receiptNumber);
+                alert('案件创建成功！收件编号：' + formData.receiptNumber);
             }
         } else {
-            alert('数据保存到数据库失败：' + (result.error || '未知错误') + '\n\n数据已保存到本地浏览器。');
+            // 处理特定错误码
+            if (result.code === 'DUPLICATE_RECEIPT_NUMBER') {
+                alert('保存失败：' + result.error);
+            } else {
+                alert('数据保存到数据库失败：' + (result.error || '未知错误') + '\n\n数据已保存到本地浏览器。');
+            }
         }
     } catch (error) {
         console.error('保存数据时出错:', error);

@@ -147,6 +147,7 @@ def test_save_case():
     print("=" * 60)
     
     case_data = create_test_case_data()
+    case_data['mode'] = 'create'  # 标记为新建模式
     print(f"收件编号: {case_data['receipt_number']}")
     print(f"申请人数量: {len(case_data['applicants'])}")
     print(f"被申请人数量: {len(case_data['respondents'])}")
@@ -258,9 +259,13 @@ def test_update_case(receipt_number):
             print(f"[FAIL] 查询案件失败: {result.get('error')}")
             return False
         
+        case_id = result['data']['case']['id']
+        
         # 创建修改后的数据
         case_data = create_test_case_data()
         case_data['receipt_number'] = receipt_number  # 保持原编号
+        case_data['case_id'] = case_id  # 添加案件ID
+        case_data['mode'] = 'update'  # 标记为更新模式
         
         # 修改申请人信息
         case_data['applicants'][0]['name'] = "张三（已修改）"
@@ -276,7 +281,7 @@ def test_update_case(receipt_number):
             "applicant_seq_no": 1
         })
         
-        print(f"更新案件: {receipt_number}")
+        print(f"更新案件: {receipt_number} (ID: {case_id})")
         print(f"修改申请人姓名为: {case_data['applicants'][0]['name']}")
         print(f"新增证据: 考勤记录")
         
@@ -298,10 +303,42 @@ def test_update_case(receipt_number):
         return False
 
 
+def test_duplicate_receipt_number(receipt_number):
+    """测试重复收件编号"""
+    print("\n" + "=" * 60)
+    print("测试5: 重复收件编号检测")
+    print("=" * 60)
+    
+    try:
+        # 尝试使用已存在的编号创建新案件
+        case_data = create_test_case_data()
+        case_data['receipt_number'] = receipt_number  # 使用已存在的编号
+        case_data['mode'] = 'create'
+        
+        print(f"尝试使用已存在的编号创建: {receipt_number}")
+        
+        response = requests.post(
+            f"{API_URL}/cases/save",
+            json=case_data,
+            headers={"Content-Type": "application/json"}
+        )
+        result = response.json()
+        
+        if not result.get('success') and result.get('code') == 'DUPLICATE_RECEIPT_NUMBER':
+            print(f"[OK] 正确拦截重复编号: {result.get('error')}")
+            return True
+        else:
+            print(f"[FAIL] 未正确拦截重复编号")
+            return False
+    except Exception as e:
+        print(f"[FAIL] 请求异常: {str(e)}")
+        return False
+
+
 def test_delete_case(receipt_number):
     """测试删除案件"""
     print("\n" + "=" * 60)
-    print("测试5: 删除案件（软删除）")
+    print("测试6: 删除案件（软删除）")
     print("=" * 60)
     
     try:
@@ -370,7 +407,10 @@ def run_all_tests():
         # 再次查询验证更新
         results.append(("查询更新后", test_query_case(receipt_number)))
         
-        # 测试5: 删除案件
+        # 测试5: 重复收件编号检测
+        results.append(("重复编号检测", test_duplicate_receipt_number(receipt_number)))
+        
+        # 测试6: 删除案件
         results.append(("删除案件", test_delete_case(receipt_number)))
     else:
         results.append(("保存案件", False))

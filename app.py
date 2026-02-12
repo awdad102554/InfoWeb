@@ -276,43 +276,85 @@ def get_labor_db_connection():
 
 @app.route('/api/cases/save', methods=['POST'])
 def save_case():
-    """保存完整案件数据"""
+    """保存完整案件数据（新建或更新）"""
     data = request.json
     receipt_number = data.get('receipt_number')
     applicants = data.get('applicants', [])
     respondents = data.get('respondents', [])
     evidence = data.get('evidence', [])
+    case_id = data.get('case_id')  # 编辑模式时传入
+    mode = data.get('mode', 'create')  # 'create' 或 'update'
+    
+    if not receipt_number:
+        return jsonify({'success': False, 'error': '收件编号不能为空'}), 400
     
     conn = get_labor_db_connection()
     cursor = conn.cursor()
     
     try:
-        # 1. 插入或更新案件主表（根据 receipt_number 唯一性）
-        cursor.execute(
-            "SELECT id FROM cases WHERE receipt_number = %s AND status = 1",
-            (receipt_number,)
-        )
-        existing_case = cursor.fetchone()
-        
-        if existing_case:
-            # 更新现有案件
-            case_id = existing_case[0]
+        # 1. 根据模式处理案件主表
+        if mode == 'create':
+            # 新建模式：检查收件编号是否已存在
             cursor.execute(
-                "UPDATE cases SET update_time = NOW() WHERE id = %s",
-                (case_id,)
+                "SELECT id FROM cases WHERE receipt_number = %s AND status = 1",
+                (receipt_number,)
             )
-            # 删除旧的关联数据，重新插入
-            cursor.execute("DELETE FROM arbitration_requests WHERE case_id = %s", (case_id,))
-            cursor.execute("DELETE FROM evidence WHERE case_id = %s", (case_id,))
-            cursor.execute("DELETE FROM respondents WHERE case_id = %s", (case_id,))
-            cursor.execute("DELETE FROM applicants WHERE case_id = %s", (case_id,))
-        else:
+            existing_case = cursor.fetchone()
+            
+            if existing_case:
+                return jsonify({
+                    'success': False, 
+                    'error': f'收件编号 "{receipt_number}" 已存在，无法创建',
+                    'code': 'DUPLICATE_RECEIPT_NUMBER'
+                }), 409
+            
             # 插入新案件
             cursor.execute(
                 "INSERT INTO cases (receipt_number) VALUES (%s)",
                 (receipt_number,)
             )
             case_id = cursor.lastrowid
+            
+        else:  # update 模式
+            # 编辑模式：必须提供 case_id
+            if not case_id:
+                return jsonify({'success': False, 'error': '编辑模式必须提供案件ID'}), 400
+            
+            # 验证案件存在且状态正常
+            cursor.execute(
+                "SELECT id, receipt_number FROM cases WHERE id = %s AND status = 1",
+                (case_id,)
+            )
+            existing_case = cursor.fetchone()
+            
+            if not existing_case:
+                return jsonify({'success': False, 'error': '案件不存在或已被删除'}), 404
+            
+            # 如果修改了收件编号，检查新编号是否与其他案件冲突
+            existing_receipt = existing_case[1]
+            if receipt_number != existing_receipt:
+                cursor.execute(
+                    "SELECT id FROM cases WHERE receipt_number = %s AND status = 1 AND id != %s",
+                    (receipt_number, case_id)
+                )
+                if cursor.fetchone():
+                    return jsonify({
+                        'success': False, 
+                        'error': f'收件编号 "{receipt_number}" 已被其他案件使用',
+                        'code': 'DUPLICATE_RECEIPT_NUMBER'
+                    }), 409
+            
+            # 更新案件时间
+            cursor.execute(
+                "UPDATE cases SET receipt_number = %s, update_time = NOW() WHERE id = %s",
+                (receipt_number, case_id)
+            )
+            
+            # 删除旧的关联数据，重新插入
+            cursor.execute("DELETE FROM arbitration_requests WHERE case_id = %s", (case_id,))
+            cursor.execute("DELETE FROM evidence WHERE case_id = %s", (case_id,))
+            cursor.execute("DELETE FROM respondents WHERE case_id = %s", (case_id,))
+            cursor.execute("DELETE FROM applicants WHERE case_id = %s", (case_id,))
         
         # 2. 插入申请人及其仲裁请求
         # 建立 seq_no -> applicant_id 映射，用于证据关联
