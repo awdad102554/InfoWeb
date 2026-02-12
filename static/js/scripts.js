@@ -296,6 +296,8 @@ function removeApplicant(index) {
     if (!confirm(`确定要删除申请人 ${index + 1} 吗？`)) {
         return;
     }
+    // 先收集当前表单数据，避免丢失已填写的信息
+    collectDataFromDOM();
     formData.applicants.splice(index, 1);
     refreshApplicantsList();
 }
@@ -313,6 +315,9 @@ function refreshApplicantsList() {
 
 // 添加申请人的仲裁请求
 function addApplicantRequest(applicantIndex) {
+    // 先收集当前表单数据，避免丢失已填写的信息
+    collectDataFromDOM();
+    
     const applicant = formData.applicants[applicantIndex];
     applicant.requests.push('');
 
@@ -322,6 +327,9 @@ function addApplicantRequest(applicantIndex) {
 
 // 删除申请人的仲裁请求
 function removeApplicantRequest(applicantIndex, requestIndex) {
+    // 先收集当前表单数据，避免丢失已填写的信息
+    collectDataFromDOM();
+    
     const applicant = formData.applicants[applicantIndex];
     if (applicant.requests.length <= 1) {
         alert('每个申请人至少需要一个仲裁请求！');
@@ -411,6 +419,8 @@ function removeRespondent(index) {
     if (!confirm(`确定要删除被申请人 ${index + 1} 吗？`)) {
         return;
     }
+    // 先收集当前表单数据，避免丢失已填写的信息
+    collectDataFromDOM();
     formData.respondents.splice(index, 1);
     refreshRespondentsList();
 }
@@ -527,6 +537,8 @@ function removeEvidence(index) {
     if (!confirm(`确定要删除证据${toChineseNumber(index + 1)}吗？`)) {
         return;
     }
+    // 先收集当前表单数据，避免丢失已填写的信息
+    collectDataFromDOM();
     formData.evidence.splice(index, 1);
     refreshEvidenceList();
 }
