@@ -140,16 +140,18 @@
             });
         });
 
+        // 所有案件数据缓存
+        let allCases = [];
+        
         // 加载案件列表
         async function loadCases() {
             try {
-                const response = await fetch(`${API_BASE_URL}/cases/list?page=${currentPage}&page_size=${pageSize}`);
+                const response = await fetch(`${API_BASE_URL}/cases/list?page=1&page_size=1000`);
                 const result = await response.json();
                 
                 if (result.success) {
-                    renderCases(result.data.list);
-                    totalCases = result.data.total;
-                    updatePagination();
+                    allCases = result.data.list;
+                    filterAndRenderCases();
                 } else {
                     showError('加载案件列表失败');
                 }
@@ -158,14 +160,50 @@
                 showError('网络错误，请稍后重试');
             }
         }
+        
+        // 筛选并渲染案件列表
+        function filterAndRenderCases() {
+            const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            // 筛选案件
+            let filteredCases = allCases;
+            if (searchTerm) {
+                filteredCases = allCases.filter(caseItem => {
+                    const receiptMatch = caseItem.receipt_number && caseItem.receipt_number.toLowerCase().includes(searchTerm);
+                    const nameMatch = caseItem.applicant_names && caseItem.applicant_names.toLowerCase().includes(searchTerm);
+                    return receiptMatch || nameMatch;
+                });
+            }
+            
+            // 分页
+            totalCases = filteredCases.length;
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const pageCases = filteredCases.slice(start, end);
+            
+            renderCases(pageCases);
+            updatePagination();
+        }
 
         // 渲染案件列表
         function renderCases(cases) {
             const tbody = document.getElementById('casesTableBody');
             const emptyState = document.getElementById('emptyState');
+            const searchTerm = document.getElementById('searchInput').value.trim();
             
             if (!cases || cases.length === 0) {
                 tbody.innerHTML = '';
+                if (searchTerm) {
+                    emptyState.innerHTML = `
+                        <i class="fas fa-search text-gray-300 text-5xl mb-4"></i>
+                        <p class="text-gray-500 text-lg">未找到匹配 "${escapeHtml(searchTerm)}" 的案件</p>
+                    `;
+                } else {
+                    emptyState.innerHTML = `
+                        <i class="fas fa-inbox text-gray-300 text-5xl mb-4"></i>
+                        <p class="text-gray-500 text-lg">暂无案件数据</p>
+                    `;
+                }
                 emptyState.classList.remove('hidden');
                 return;
             }
@@ -243,7 +281,15 @@
         // 刷新列表
         function refreshList() {
             currentPage = 1;
+            document.getElementById('searchInput').value = '';
             loadCases();
+        }
+        
+        // HTML转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // 显示删除确认弹窗
