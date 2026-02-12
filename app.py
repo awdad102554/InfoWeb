@@ -58,6 +58,12 @@ def query_page():
     return render_template('query_test.html')
 
 
+@app.route('/cases')
+def cases_manage_page():
+    """案件管理页面"""
+    return render_template('cases_manage.html')
+
+
 # ============================================
 # 内部API服务（原Info项目）
 # ============================================
@@ -388,29 +394,21 @@ def save_case():
         conn.close()
 
 
-@app.route('/api/cases/query', methods=['GET'])
-def query_case():
-    """根据收件编号查询案件"""
-    receipt_number = request.args.get('receipt_number')
-    
-    if not receipt_number:
-        return jsonify({'success': False, 'error': '收件编号不能为空'}), 400
-    
+def get_case_detail_by_id(case_id):
+    """根据案件ID获取完整详情（内部函数）"""
     conn = get_labor_db_connection()
     cursor = conn.cursor(pymysql.cursors.DictCursor)
     
     try:
         # 查询案件基本信息
         cursor.execute(
-            "SELECT * FROM cases WHERE receipt_number = %s AND status = 1",
-            (receipt_number,)
+            "SELECT * FROM cases WHERE id = %s AND status = 1",
+            (case_id,)
         )
         case = cursor.fetchone()
         
         if not case:
-            return jsonify({'success': False, 'error': '案件不存在'}), 404
-        
-        case_id = case['id']
+            return None
         
         # 查询申请人
         cursor.execute(
@@ -434,29 +432,87 @@ def query_case():
         )
         respondents = cursor.fetchall()
         
-        # 查询证据
+        # 查询证据，并转换 applicant_id 为 applicant_seq_no
         cursor.execute(
-            "SELECT * FROM evidence WHERE case_id = %s ORDER BY seq_no",
+            """SELECT e.*, a.seq_no as applicant_seq_no 
+               FROM evidence e 
+               LEFT JOIN applicants a ON e.applicant_id = a.id 
+               WHERE e.case_id = %s 
+               ORDER BY e.seq_no""",
             (case_id,)
         )
         evidence = cursor.fetchall()
+        # 处理证据数据，将 applicant_id 替换为 applicant_seq_no
+        for evi in evidence:
+            evi['applicant_seq_no'] = evi.get('applicant_seq_no')  # 可能为None
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'case': case,
-                'applicants': applicants,
-                'respondents': respondents,
-                'evidence': evidence
-            }
-        })
+        return {
+            'case': case,
+            'applicants': applicants,
+            'respondents': respondents,
+            'evidence': evidence
+        }
+        
+    except Exception as e:
+        logger.error(f"获取案件详情失败: {str(e)}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/cases/query', methods=['GET'])
+def query_case():
+    """根据收件编号查询案件"""
+    receipt_number = request.args.get('receipt_number')
+    
+    if not receipt_number:
+        return jsonify({'success': False, 'error': '收件编号不能为空'}), 400
+    
+    conn = get_labor_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 查询案件ID
+        cursor.execute(
+            "SELECT id FROM cases WHERE receipt_number = %s AND status = 1",
+            (receipt_number,)
+        )
+        case_row = cursor.fetchone()
+        
+        if not case_row:
+            return jsonify({'success': False, 'error': '案件不存在'}), 404
+        
+        case_id = case_row['id']
+        cursor.close()
+        conn.close()
+        
+        # 使用内部函数获取详情
+        data = get_case_detail_by_id(case_id)
+        if not data:
+            return jsonify({'success': False, 'error': '获取案件详情失败'}), 500
+        
+        return jsonify({'success': True, 'data': data})
         
     except Exception as e:
         logger.error(f"查询案件失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.route('/api/cases/<int:case_id>', methods=['GET'])
+def get_case_by_id(case_id):
+    """根据案件ID查询案件详情（用于编辑）"""
+    data = get_case_detail_by_id(case_id)
+    
+    if not data:
+        return jsonify({'success': False, 'error': '案件不存在或已被删除'}), 404
+    
+    return jsonify({'success': True, 'data': data})
 
 
 @app.route('/api/cases/list', methods=['GET'])
@@ -705,8 +761,9 @@ def start_server():
     logger.info("=" * 60)
     logger.info("API端点列表:")
     logger.info("  [页面服务]")
-    logger.info("  GET  /              - 劳动仲裁申请书在线填写")
+    logger.info("  GET  /              - 劳动仲裁申请书在线填写（支持编辑: ?case_id=xxx）")
     logger.info("  GET  /query         - 案件查询页面")
+    logger.info("  GET  /cases         - 案件管理列表")
     logger.info("  [内部API服务]")
     logger.info("  GET  /api/status    - 服务状态")
     logger.info("  GET  /api/login/status    - 登录状态")

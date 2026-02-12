@@ -9,20 +9,37 @@ let formData = {
     evidence: []
 };
 
+// 编辑模式相关
+let editMode = {
+    isEditing: false,
+    caseId: null
+};
+
 // 页面加载后执行
 document.addEventListener('DOMContentLoaded', function() {
-    // 加载保存的数据
-    loadSavedData();
-
-    // 初始化：如果没有数据，添加一个默认的申请人和被申请人
-    if (formData.applicants.length === 0) {
-        addApplicant();
-    }
-    if (formData.respondents.length === 0) {
-        addRespondent();
-    }
-    if (formData.evidence.length === 0) {
-        addEvidence();
+    // 检查是否处于编辑模式
+    const urlParams = new URLSearchParams(window.location.search);
+    const caseId = urlParams.get('case_id');
+    
+    if (caseId) {
+        // 编辑模式：加载案件数据
+        editMode.isEditing = true;
+        editMode.caseId = caseId;
+        loadCaseForEdit(caseId);
+    } else {
+        // 新增模式：加载本地保存的数据
+        loadSavedData();
+        
+        // 初始化：如果没有数据，添加一个默认的申请人和被申请人
+        if (formData.applicants.length === 0) {
+            addApplicant();
+        }
+        if (formData.respondents.length === 0) {
+            addRespondent();
+        }
+        if (formData.evidence.length === 0) {
+            addEvidence();
+        }
     }
 
     // 添加申请人按钮
@@ -680,7 +697,11 @@ async function saveData() {
         document.getElementById('receiptNumberDisplay').style.display = 'inline';
         
         if (result.success) {
-            alert('数据保存成功！收件编号：' + formData.receiptNumber);
+            if (editMode.isEditing) {
+                alert('案件更新成功！');
+            } else {
+                alert('数据保存成功！收件编号：' + formData.receiptNumber);
+            }
         } else {
             alert('数据保存到数据库失败：' + (result.error || '未知错误') + '\n\n数据已保存到本地浏览器。');
         }
@@ -690,8 +711,107 @@ async function saveData() {
     } finally {
         // 恢复按钮状态
         const saveBtn = document.getElementById('saveBtn');
-        saveBtn.innerHTML = '<i class="fas fa-save mr-2"></i>保存数据';
+        const btnText = editMode.isEditing ? '更新案件' : '保存数据';
+        saveBtn.innerHTML = `<i class="fas fa-save mr-2"></i>${btnText}`;
         saveBtn.disabled = false;
+    }
+}
+
+// 加载案件数据进行编辑
+async function loadCaseForEdit(caseId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/cases/${caseId}`);
+        const result = await response.json();
+        
+        if (!result.success) {
+            alert('加载案件数据失败：' + (result.error || '未知错误'));
+            //  fallback到新增模式
+            editMode.isEditing = false;
+            editMode.caseId = null;
+            loadSavedData();
+            initDefaultData();
+            return;
+        }
+        
+        const data = result.data;
+        
+        // 填充表单数据
+        formData.receiptNumber = data.case.receipt_number;
+        document.getElementById('receiptNumber').value = formData.receiptNumber;
+        document.getElementById('receiptNumber').readOnly = true; // 编辑模式下收件编号只读
+        document.getElementById('currentReceiptNumber').textContent = formData.receiptNumber;
+        document.getElementById('receiptNumberDisplay').style.display = 'inline';
+        
+        // 转换申请人数据
+        formData.applicants = data.applicants.map(app => ({
+            name: app.name || '',
+            gender: app.gender || '',
+            nation: app.nation || '',
+            birth: app.birth_date || '',
+            address: app.address || '',
+            phone: app.phone || '',
+            idCard: app.id_card || '',
+            employmentDate: app.employment_date || '',
+            workLocation: app.work_location || '',
+            monthlySalary: app.monthly_salary || '',
+            factsReasons: app.facts_reasons || '',
+            requests: app.requests ? app.requests.map(r => r.content) : ['']
+        }));
+        
+        // 转换被申请人数据
+        formData.respondents = data.respondents.map(resp => ({
+            name: resp.name || '',
+            legalPerson: resp.legal_person || '',
+            position: resp.position || '',
+            address: resp.address || '',
+            phone: resp.phone || '',
+            code: resp.unified_code || ''
+        }));
+        
+        // 转换证据数据
+        formData.evidence = data.evidence.map(evi => {
+            // 解析页码范围
+            let pageRange = evi.page_range || '';
+            return {
+                name: evi.name || '',
+                purpose: evi.purpose || '',
+                pageRange: pageRange,
+                applicantSeqNo: evi.applicant_seq_no ? String(evi.applicant_seq_no) : ''
+            };
+        });
+        
+        // 渲染所有数据
+        refreshApplicantsList();
+        refreshRespondentsList();
+        refreshEvidenceList();
+        
+        // 显示编辑模式UI
+        document.getElementById('editModeBanner').classList.remove('hidden');
+        document.getElementById('saveBtnText').textContent = '更新案件';
+        
+        // 更新页面标题
+        document.title = '编辑案件 - ' + formData.receiptNumber;
+        
+    } catch (error) {
+        console.error('加载案件数据失败:', error);
+        alert('网络错误，无法加载案件数据');
+        editMode.isEditing = false;
+        editMode.caseId = null;
+        loadSavedData();
+        initDefaultData();
+    }
+}
+
+// 初始化默认数据
+function initDefaultData() {
+    if (formData.applicants.length === 0) {
+        addApplicant();
+    }
+    if (formData.respondents.length === 0) {
+        addRespondent();
+    }
+    if (formData.evidence.length === 0) {
+        addEvidence();
     }
 }
 
@@ -781,35 +901,44 @@ function loadSavedData() {
 
 // 重置表单
 function resetForm() {
-    if (confirm('确定要重置所有表单数据吗？这将清除所有已填写的内容。')) {
-        localStorage.removeItem('laborArbitrationFormData');
-
-        // 清空容器
-        document.getElementById('applicantsList').innerHTML = '';
-        document.getElementById('respondentsList').innerHTML = '';
-        document.getElementById('evidenceList').innerHTML = '';
-        
-        // 清空收件编号
-        const receiptInput = document.getElementById('receiptNumber');
-        if (receiptInput) {
-            receiptInput.value = '';
+    if (editMode.isEditing) {
+        // 编辑模式下，重置为原始案件数据
+        if (confirm('确定要重置为原始数据吗？这将丢弃您所做的修改。')) {
+            loadCaseForEdit(editMode.caseId);
+            alert('已恢复原始数据！');
         }
-        document.getElementById('receiptNumberDisplay').style.display = 'none';
+    } else {
+        // 新增模式下，清空表单
+        if (confirm('确定要重置所有表单数据吗？这将清除所有已填写的内容。')) {
+            localStorage.removeItem('laborArbitrationFormData');
 
-        // 重置数据
-        formData = {
-            receiptNumber: '',
-            applicants: [],
-            respondents: [],
-            evidence: []
-        };
+            // 清空容器
+            document.getElementById('applicantsList').innerHTML = '';
+            document.getElementById('respondentsList').innerHTML = '';
+            document.getElementById('evidenceList').innerHTML = '';
+            
+            // 清空收件编号
+            const receiptInput = document.getElementById('receiptNumber');
+            if (receiptInput) {
+                receiptInput.value = '';
+            }
+            document.getElementById('receiptNumberDisplay').style.display = 'none';
 
-        // 添加默认值
-        addApplicant();
-        addRespondent();
-        addEvidence();
+            // 重置数据
+            formData = {
+                receiptNumber: '',
+                applicants: [],
+                respondents: [],
+                evidence: []
+            };
 
-        alert('表单已重置！');
+            // 添加默认值
+            addApplicant();
+            addRespondent();
+            addEvidence();
+
+            alert('表单已重置！');
+        }
     }
 }
 

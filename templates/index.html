@@ -46,8 +46,11 @@
         <!-- 操作按钮区域 -->
         <div class="flex flex-wrap justify-between items-center mb-8 p-4 bg-white rounded-xl shadow no-print">
             <div class="mb-4 md:mb-0">
+                <a href="/cases" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg mr-3 transition duration-300 inline-block">
+                    <i class="fas fa-arrow-left mr-2"></i>返回案件管理
+                </a>
                 <button id="saveBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg mr-3 transition duration-300">
-                    <i class="fas fa-save mr-2"></i>保存数据
+                    <i class="fas fa-save mr-2"></i><span id="saveBtnText">保存数据</span>
                 </button>
                 <button id="resetBtn" class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition duration-300">
                     <i class="fas fa-redo mr-2"></i>重置表单
@@ -60,6 +63,17 @@
                 <button id="previewBtn" class="bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded-lg transition duration-300">
                     <i class="fas fa-eye mr-2"></i>预览完整版
                 </button>
+            </div>
+        </div>
+
+        <!-- 编辑模式提示 -->
+        <div id="editModeBanner" class="hidden mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl no-print">
+            <div class="flex items-center">
+                <i class="fas fa-edit text-orange-500 text-xl mr-3"></i>
+                <div>
+                    <h3 class="font-medium text-orange-800">编辑模式</h3>
+                    <p class="text-sm text-orange-600">您正在编辑案件，保存将更新原有数据。收件编号不可修改。</p>
+                </div>
             </div>
         </div>
 

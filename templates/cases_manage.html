@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>案件管理 - 劳动仲裁信息查询综合服务平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .card { transition: all 0.3s ease; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto max-w-7xl p-4">
+        <!-- 标题 -->
+        <header class="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold">
+                        <i class="fas fa-folder-open mr-2"></i>案件管理
+                    </h1>
+                    <p class="opacity-90 mt-2">查看、编辑和删除仲裁案件</p>
+                </div>
+                <a href="/" class="bg-white text-blue-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                    <i class="fas fa-plus mr-2"></i>新建案件
+                </a>
+            </div>
+        </header>
+
+        <!-- 搜索区域 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex flex-wrap gap-4">
+                <div class="flex-1 min-w-[200px]">
+                    <input type="text" id="searchInput" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="搜索收件编号或申请人姓名...">
+                </div>
+                <button onclick="loadCases()" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition">
+                    <i class="fas fa-search mr-2"></i>搜索
+                </button>
+                <button onclick="refreshList()" 
+                    class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-3 px-6 rounded-lg transition">
+                    <i class="fas fa-sync-alt mr-2"></i>刷新
+                </button>
+            </div>
+        </div>
+
+        <!-- 案件列表 -->
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">案件ID</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">收件编号</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">申请人</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">被申请人</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">证据数</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">创建时间</th>
+                            <th class="px-6 py-4 text-center text-sm font-semibold text-gray-700">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="casesTableBody" class="divide-y divide-gray-200">
+                        <!-- 动态填充 -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 分页 -->
+            <div class="bg-gray-50 px-6 py-4 flex justify-between items-center">
+                <span id="paginationInfo" class="text-sm text-gray-600">加载中...</span>
+                <div class="flex gap-2">
+                    <button id="prevBtn" onclick="changePage(-1)" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button id="nextBtn" onclick="changePage(1)" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 空状态提示 -->
+        <div id="emptyState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <i class="fas fa-inbox text-gray-300 text-5xl mb-4"></i>
+            <p class="text-gray-500 text-lg">暂无案件数据</p>
+            <a href="/" class="inline-block mt-4 text-blue-600 hover:text-blue-800">
+                <i class="fas fa-plus mr-1"></i>创建第一个案件
+            </a>
+        </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div id="deleteModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <div class="text-center">
+                <i class="fas fa-exclamation-triangle text-yellow-500 text-4xl mb-4"></i>
+                <h3 class="text-xl font-bold text-gray-800 mb-2">确认删除案件？</h3>
+                <p class="text-gray-600 mb-6">此操作将删除案件及所有关联的申请人、被申请人和证据信息，且无法恢复。</p>
+                <div class="flex gap-4 justify-center">
+                    <button onclick="closeDeleteModal()" 
+                        class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition">
+                        取消
+                    </button>
+                    <button onclick="confirmDelete()" 
+                        class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
+                        确认删除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = "/api";
+        let currentPage = 1;
+        let pageSize = 10;
+        let totalCases = 0;
+        let deleteCaseId = null;
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCases();
+            
+            // 搜索框回车事件
+            document.getElementById('searchInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    currentPage = 1;
+                    loadCases();
+                }
+            });
+        });
+
+        // 加载案件列表
+        async function loadCases() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/cases/list?page=${currentPage}&page_size=${pageSize}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    renderCases(result.data.list);
+                    totalCases = result.data.total;
+                    updatePagination();
+                } else {
+                    showError('加载案件列表失败');
+                }
+            } catch (error) {
+                console.error('加载案件列表失败:', error);
+                showError('网络错误，请稍后重试');
+            }
+        }
+
+        // 渲染案件列表
+        function renderCases(cases) {
+            const tbody = document.getElementById('casesTableBody');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (!cases || cases.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            emptyState.classList.add('hidden');
+            
+            tbody.innerHTML = cases.map(caseItem => `
+                <tr class="hover:bg-gray-50 fade-in">
+                    <td class="px-6 py-4 text-sm text-gray-900">${caseItem.id}</td>
+                    <td class="px-6 py-4 text-sm font-medium text-blue-600">${caseItem.receipt_number}</td>
+                    <td class="px-6 py-4 text-sm text-gray-700">
+                        <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                            ${caseItem.applicant_count || 0} 人
+                        </span>
+                        <span class="ml-2 text-gray-500">${caseItem.applicant_names || '-'}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-700">
+                        <span class="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs">
+                            ${caseItem.respondent_count || 0} 家
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-700">
+                        <span class="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                            ${caseItem.evidence_count || 0} 份
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${formatDate(caseItem.create_time)}</td>
+                    <td class="px-6 py-4 text-center">
+                        <div class="flex justify-center gap-2">
+                            <a href="/?case_id=${caseItem.id}" 
+                                class="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition text-sm"
+                                title="编辑">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="/query?receipt_number=${caseItem.receipt_number}" 
+                                class="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition text-sm"
+                                title="查看">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            <button onclick="showDeleteModal(${caseItem.id})" 
+                                class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm"
+                                title="删除">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 更新分页
+        function updatePagination() {
+            const totalPages = Math.ceil(totalCases / pageSize);
+            const start = (currentPage - 1) * pageSize + 1;
+            const end = Math.min(currentPage * pageSize, totalCases);
+            
+            document.getElementById('paginationInfo').textContent = 
+                totalCases > 0 ? `显示 ${start}-${end} 条，共 ${totalCases} 条` : '暂无数据';
+            
+            document.getElementById('prevBtn').disabled = currentPage <= 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        }
+
+        // 切换页码
+        function changePage(delta) {
+            const totalPages = Math.ceil(totalCases / pageSize);
+            const newPage = currentPage + delta;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                loadCases();
+            }
+        }
+
+        // 刷新列表
+        function refreshList() {
+            currentPage = 1;
+            loadCases();
+        }
+
+        // 显示删除确认弹窗
+        function showDeleteModal(caseId) {
+            deleteCaseId = caseId;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        // 关闭删除确认弹窗
+        function closeDeleteModal() {
+            deleteCaseId = null;
+            document.getElementById('deleteModal').classList.add('hidden');
+        }
+
+        // 确认删除
+        async function confirmDelete() {
+            if (!deleteCaseId) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/cases/${deleteCaseId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('案件已删除');
+                    closeDeleteModal();
+                    loadCases();
+                } else {
+                    alert('删除失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('删除失败:', error);
+                alert('网络错误，删除失败');
+            }
+        }
+
+        // 格式化日期
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // 显示错误
+        function showError(message) {
+            const tbody = document.getElementById('casesTableBody');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="px-6 py-8 text-center text-red-500">
+                        <i class="fas fa-exclamation-circle mr-2"></i>${message}
+                    </td>
+                </tr>
+            `;
+        }
+
+        // 点击弹窗外部关闭
+        document.getElementById('deleteModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeDeleteModal();
+            }
+        });
+    </script>
+</body>
+</html>
