@@ -473,26 +473,56 @@ def query_case():
     cursor = conn.cursor(pymysql.cursors.DictCursor)
     
     try:
-        # 查询案件ID
+        # 查询案件完整信息（关联查询）
         cursor.execute(
-            "SELECT id FROM cases WHERE receipt_number = %s AND status = 1",
+            "SELECT * FROM cases WHERE receipt_number = %s AND status = 1",
             (receipt_number,)
         )
-        case_row = cursor.fetchone()
+        case = cursor.fetchone()
         
-        if not case_row:
+        if not case:
             return jsonify({'success': False, 'error': '案件不存在'}), 404
         
-        case_id = case_row['id']
-        cursor.close()
-        conn.close()
+        case_id = case['id']
         
-        # 使用内部函数获取详情
-        data = get_case_detail_by_id(case_id)
-        if not data:
-            return jsonify({'success': False, 'error': '获取案件详情失败'}), 500
+        # 查询申请人
+        cursor.execute(
+            "SELECT * FROM applicants WHERE case_id = %s ORDER BY seq_no",
+            (case_id,)
+        )
+        applicants = cursor.fetchall()
         
-        return jsonify({'success': True, 'data': data})
+        # 查询每个申请人的仲裁请求
+        for applicant in applicants:
+            cursor.execute(
+                "SELECT seq_no, content FROM arbitration_requests WHERE applicant_id = %s ORDER BY seq_no",
+                (applicant['id'],)
+            )
+            applicant['requests'] = cursor.fetchall()
+        
+        # 查询被申请人
+        cursor.execute(
+            "SELECT * FROM respondents WHERE case_id = %s ORDER BY seq_no",
+            (case_id,)
+        )
+        respondents = cursor.fetchall()
+        
+        # 查询证据
+        cursor.execute(
+            "SELECT * FROM evidence WHERE case_id = %s ORDER BY seq_no",
+            (case_id,)
+        )
+        evidence = cursor.fetchall()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'case': case,
+                'applicants': applicants,
+                'respondents': respondents,
+                'evidence': evidence
+            }
+        })
         
     except Exception as e:
         logger.error(f"查询案件失败: {str(e)}")
