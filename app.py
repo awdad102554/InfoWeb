@@ -289,6 +289,8 @@ def save_case():
         case_id = cursor.lastrowid
         
         # 2. 插入申请人及其仲裁请求
+        # 建立 seq_no -> applicant_id 映射，用于证据关联
+        applicant_seq_to_id = {}
         for applicant in applicants:
             cursor.execute("""
                 INSERT INTO applicants (
@@ -304,6 +306,8 @@ def save_case():
                 applicant.get('monthly_salary'), applicant.get('facts_reasons')
             ))
             applicant_id = cursor.lastrowid
+            # 保存 seq_no 到 applicant_id 的映射
+            applicant_seq_to_id[applicant.get('seq_no')] = applicant_id
             
             # 插入该申请人的仲裁请求
             for req in applicant.get('requests', []):
@@ -335,12 +339,16 @@ def save_case():
                 page_start = parts[0]
                 page_end = parts[1] if len(parts) > 1 else ''
             
+            # 前端传来的是 seq_no，需要转换为真正的 applicant_id
+            evi_applicant_seq = evi.get('applicant_id')
+            evi_applicant_id = applicant_seq_to_id.get(evi_applicant_seq) if evi_applicant_seq else None
+            
             cursor.execute("""
                 INSERT INTO evidence (
                     case_id, applicant_id, seq_no, name, source, purpose, page_start, page_end, page_range
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                case_id, evi.get('applicant_id'), evi.get('seq_no'), evi.get('name'), 
+                case_id, evi_applicant_id, evi.get('seq_no'), evi.get('name'), 
                 evi.get('source'), evi.get('purpose'), page_start, page_end, page_range
             ))
         

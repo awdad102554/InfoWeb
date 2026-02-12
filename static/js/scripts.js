@@ -283,11 +283,15 @@ function removeApplicant(index) {
 
 // 刷新申请人列表
 function refreshApplicantsList() {
+    // 先收集当前表单数据，避免丢失
+    collectDataFromDOM();
     const container = document.getElementById('applicantsList');
     container.innerHTML = '';
     formData.applicants.forEach((applicant, index) => {
         renderApplicant(index);
     });
+    // 重新渲染证据列表，因为申请人名称可能已更改
+    refreshEvidenceList();
 }
 
 // 添加申请人的仲裁请求
@@ -475,7 +479,7 @@ function renderEvidence(index) {
                 <select class="evidence-applicant w-full px-2 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm">
                     <option value="">请选择申请人</option>
                     ${formData.applicants.map((app, idx) => `
-                        <option value="${idx + 1}" ${evidence.applicantId == idx + 1 ? 'selected' : ''}>申请人${idx + 1}：${app.name || '未命名'}</option>
+                        <option value="${idx + 1}" ${evidence.applicantId == idx + 1 ? 'selected' : ''}>申请人${idx + 1}${app.name ? '：' + app.name : ''}</option>
                     `).join('')}
                 </select>
             </div>
@@ -512,6 +516,32 @@ function removeEvidence(index) {
 
 // 刷新证据列表
 function refreshEvidenceList() {
+    // 先收集当前证据数据
+    const currentEvidence = [];
+    document.querySelectorAll('.evidence-item').forEach(item => {
+        const pageStart = item.querySelector('.evidence-page-start').value.trim();
+        const pageEnd = item.querySelector('.evidence-page-end').value.trim();
+        let pageRange = '';
+        if (pageStart && pageEnd) {
+            pageRange = `${pageStart}-${pageEnd}`;
+        } else if (pageStart) {
+            pageRange = pageStart;
+        } else if (pageEnd) {
+            pageRange = pageEnd;
+        }
+        const applicantSelect = item.querySelector('.evidence-applicant');
+        currentEvidence.push({
+            name: item.querySelector('.evidence-name').value,
+            purpose: item.querySelector('.evidence-purpose').value,
+            pageRange: pageRange,
+            applicantId: applicantSelect ? applicantSelect.value : ''
+        });
+    });
+    // 合并到 formData
+    if (currentEvidence.length > 0) {
+        formData.evidence = currentEvidence;
+    }
+    
     const container = document.getElementById('evidenceList');
     container.innerHTML = '';
     formData.evidence.forEach((evidence, index) => {
