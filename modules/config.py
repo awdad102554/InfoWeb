@@ -4,7 +4,7 @@ from datetime import timedelta
 
 class Config:
     # 数据库配置
-    DB_HOST = "192.168.123.16"
+    DB_HOST = "127.0.0.1"
     DB_PORT = 3306
     DB_NAME = "判决书生成"
     DB_USER = "root"

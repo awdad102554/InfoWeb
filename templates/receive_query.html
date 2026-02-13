@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>收件查询 - 劳动仲裁信息查询综合服务平台</title>
+    <meta name="version" content="v2.1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status-btn.active {
+            background-color: #16a34a;
+            color: white;
+            border-color: #16a34a;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .row-expandable {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .row-expandable:hover {
+            background-color: #f0fdf4;
+        }
+        .detail-panel {
+            background-color: #f8fafc;
+            border-left: 4px solid #16a34a;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto max-w-7xl p-4">
+        <!-- 标题 -->
+        <header class="bg-gradient-to-r from-green-600 to-green-800 text-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold">
+                        <i class="fas fa-inbox mr-2"></i>收件查询
+                    </h1>
+                    <p class="opacity-90 mt-2">查询内部服务器收件数据</p>
+                </div>
+                <a href="/cases" class="bg-white text-green-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                    <i class="fas fa-arrow-left mr-2"></i>返回案件管理
+                </a>
+            </div>
+        </header>
+
+        <!-- 查询区域 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <!-- 状态筛选按钮 -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">状态筛选</label>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="setStatus('')" id="status-all" class="status-btn active px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        全部
+                    </button>
+                    <button onclick="setStatus('0')" id="status-0" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        收件登记
+                    </button>
+                    <button onclick="setStatus('5')" id="status-5" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        已提交
+                    </button>
+                    <button onclick="setStatus('1')" id="status-1" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        审核通过
+                    </button>
+                    <button onclick="setStatus('3')" id="status-3" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        审批通过
+                    </button>
+                    <button onclick="setStatus('2')" id="status-2" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        审核不通过
+                    </button>
+                    <button onclick="setStatus('4')" id="status-4" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        审批不通过
+                    </button>
+                </div>
+            </div>
+
+            <!-- 查询条件 -->
+            <div class="flex flex-wrap gap-3 items-end">
+                <div class="w-36">
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">申请日期</label>
+                    <input type="date" id="dateInput" 
+                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
+                        value="">
+                </div>
+                <div class="w-36">
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">案件编号</label>
+                    <input type="text" id="caseNoInput" 
+                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
+                        placeholder="如: 202691">
+                </div>
+                <button onclick="queryReceiveData()" 
+                    class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-1.5 px-5 rounded-lg transition h-9">
+                    <i class="fas fa-search mr-1"></i>查询
+                </button>
+                <button onclick="resetQuery()" 
+                    class="bg-gray-500 hover:bg-gray-600 text-white text-sm font-medium py-1.5 px-5 rounded-lg transition h-9">
+                    <i class="fas fa-undo mr-1"></i>重置
+                </button>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div id="loadingState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-gray-600">正在查询收件数据...</p>
+        </div>
+
+        <!-- 结果列表 -->
+        <div id="resultContainer" class="bg-white rounded-xl shadow-lg overflow-hidden hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-800">
+                    <i class="fas fa-list mr-2 text-green-600"></i>查询结果
+                </h2>
+                <span id="resultCount" class="text-sm text-gray-600"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-16">序号</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">收件编号</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">申请人</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">被申请人</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">案由</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">申请日期</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">仲裁组</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">状态</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-20">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultTableBody" class="divide-y divide-gray-200">
+                        <!-- 动态填充 -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 分页 -->
+            <div class="bg-gray-50 px-6 py-4 flex justify-between items-center border-t border-gray-200">
+                <span id="paginationInfo" class="text-sm text-gray-600"></span>
+                <div class="flex gap-2">
+                    <button id="prevBtn" onclick="changePage(-1)" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="pageInfo" class="px-4 py-2 text-sm text-gray-700"></span>
+                    <button id="nextBtn" onclick="changePage(1)" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 空状态提示 -->
+        <div id="emptyState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <i class="fas fa-inbox text-gray-300 text-5xl mb-4"></i>
+            <p class="text-gray-500 text-lg">暂无数据</p>
+            <p class="text-gray-400 text-sm mt-2">请调整查询条件后点击查询</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <div id="errorState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <i class="fas fa-exclamation-circle text-red-400 text-5xl mb-4"></i>
+            <p class="text-red-500 text-lg" id="errorMessage">查询失败</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = "/api";
+        let currentPage = 1;
+        let pageSize = 20;
+        let totalItems = 0;
+        let currentParams = {};
+        let currentData = []; // 保存当前数据以便展开详情
+
+        // 状态映射
+        const statusMap = {
+            0: { text: '收件登记', class: 'bg-gray-100 text-gray-800' },
+            1: { text: '审核通过', class: 'bg-green-100 text-green-800' },
+            2: { text: '审核不通过', class: 'bg-red-100 text-red-800' },
+            3: { text: '审批通过', class: 'bg-blue-100 text-blue-800' },
+            4: { text: '审批不通过', class: 'bg-orange-100 text-orange-800' },
+            5: { text: '已提交', class: 'bg-purple-100 text-purple-800' },
+        };
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            // 默认加载全部数据
+            queryReceiveData();
+        });
+
+        // 设置状态
+        function setStatus(status) {
+            // 更新按钮样式
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(status === '' ? 'status-all' : `status-${status}`).classList.add('active');
+            
+            // 清空其他筛选条件
+            document.getElementById('caseNoInput').value = '';
+            document.getElementById('dateInput').value = '';
+            
+            // 构建参数（空字符串不加入参数）
+            currentParams = {};
+            if (status) currentParams.status = status;
+            
+            currentPage = 1;
+            fetchData();
+        }
+
+        // 转换案件编号格式，支持多种输入：
+        // 202691 -> [2026]91
+        // 2026]91 -> [2026]91
+        // 明永劳人仲收[2026]91号 -> [2026]91 (提取核心部分)
+        function convertCaseNo(caseNo) {
+            caseNo = caseNo.trim();
+            
+            // 如果已经是完整格式 [2026]91，直接返回
+            if (/^\[\d{4}\]\d+$/.test(caseNo)) {
+                return caseNo;
+            }
+            
+            // 如果是 2026]91 格式，补充左括号
+            if (/^\d{4}\]\d+$/.test(caseNo)) {
+                return '[' + caseNo;
+            }
+            
+            // 如果是 202691 纯数字格式
+            if (/^\d{6,}$/.test(caseNo)) {
+                const year = caseNo.slice(0, 4);
+                const num = caseNo.slice(4);
+                return `[${year}]${num}`;
+            }
+            
+            // 如果是完整案件编号（如 明永劳人仲收[2026]91号），提取 [2026]91 部分
+            const match = caseNo.match(/\[(\d{4})\](\d+)/);
+            if (match) {
+                return `[${match[1]}]${match[2]}`;
+            }
+            
+            return caseNo;
+        }
+
+        // 查询收件数据
+        async function queryReceiveData() {
+            const date = document.getElementById('dateInput').value;
+            let caseNo = document.getElementById('caseNoInput').value.trim();
+            
+            // 转换案件编号格式
+            if (caseNo) {
+                caseNo = convertCaseNo(caseNo);
+                // 更新输入框显示转换后的格式
+                document.getElementById('caseNoInput').value = caseNo;
+            }
+            
+            // 获取当前选中的状态
+            let status = '';
+            const activeBtn = document.querySelector('.status-btn.active');
+            if (activeBtn && activeBtn.id !== 'status-all') {
+                status = activeBtn.id.replace('status-', '');
+            }
+            
+            currentParams = {};
+            if (date) currentParams.application_date = date;
+            if (caseNo) currentParams.case_no = caseNo;
+            if (status) currentParams.status = status;
+            
+            currentPage = 1;
+            await fetchData();
+        }
+
+        // 获取数据
+        async function fetchData() {
+            showLoading();
+            
+            try {
+                // 构建查询参数（过滤掉空值）
+                const paramsObj = {
+                    page: currentPage,
+                    page_size: pageSize
+                };
+                
+                // 只添加非空参数
+                Object.keys(currentParams).forEach(key => {
+                    const value = currentParams[key];
+                    if (value !== '' && value !== undefined && value !== null) {
+                        paramsObj[key] = value;
+                    }
+                });
+                
+                const params = new URLSearchParams(paramsObj);
+                const requestUrl = `${API_BASE_URL}/receive/query?${params}`;
+                
+                // 调试日志
+                console.log('请求URL:', requestUrl);
+                console.log('请求参数:', paramsObj);
+                
+                const response = await fetch(requestUrl);
+                
+                console.log('响应状态:', response.status);
+                console.log('响应头:', [...response.headers.entries()]);
+                
+                // 检查响应状态
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status} ${response.statusText}`);
+                }
+                
+                // 获取响应文本
+                const responseText = await response.text();
+                console.log('响应文本前200字符:', responseText.substring(0, 200));
+                
+                // 尝试解析 JSON
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('JSON解析失败:', parseError);
+                    console.error('响应内容:', responseText);
+                    throw new Error('服务器返回的数据格式不正确');
+                }
+                
+                console.log('解析后的结果:', result);
+                
+                // 处理嵌套结构: {code: 200, data: {code: 200, data: {...}, message: "成功"}}
+                const innerResult = result.data || {};
+                if ((result.code === 200 || result.code === 0) && 
+                    (innerResult.code === 200 || innerResult.code === 0)) {
+                    renderData(innerResult.data);
+                } else {
+                    const errorMsg = innerResult.message || result.message || `查询失败 (code: ${result.code})`;
+                    showError(errorMsg);
+                }
+            } catch (error) {
+                console.error('查询失败:', error);
+                showError('查询失败: ' + error.message);
+            }
+        }
+
+        // 渲染数据
+        function renderData(data) {
+            // API返回的数据结构: { data: [...], totalNum: number, page: [offset, limit] }
+            const list = data.data || [];
+            totalItems = data.totalNum || 0;
+            currentData = list; // 保存数据
+            
+            if (list.length === 0) {
+                showEmpty();
+                return;
+            }
+            
+            const tbody = document.getElementById('resultTableBody');
+            document.getElementById('resultCount').textContent = `共 ${totalItems} 条记录`;
+            
+            tbody.innerHTML = list.map((item, index) => {
+                const seqNo = (currentPage - 1) * pageSize + index + 1;
+                const statusInfo = statusMap[item.status] || { text: '未知', class: 'bg-gray-100 text-gray-800' };
+                
+                // 获取申请人信息
+                const applicantName = item.applicant || '-';
+                
+                // 获取被申请人信息
+                const respondentName = item.respondent || '-';
+                
+                // 获取案由
+                const caseReason = item.cases?.case_reason || '-';
+                
+                // 获取仲裁组信息
+                const arbitrator = item.groups?.arbitrator || '-';
+                const clerk = item.groups?.clerk || '-';
+                const arbGroup = arbitrator !== '-' ? `${arbitrator} / ${clerk}` : '-';
+                
+                // 申请日期
+                const applyDate = formatDate(item.application_at || item.cases?.apply_at);
+                
+                return `
+                    <tr class="row-expandable fade-in" onclick="toggleDetail(${index})">
+                        <td class="px-4 py-3 text-sm text-gray-900">${seqNo}</td>
+                        <td class="px-4 py-3 text-sm font-medium text-green-600">${escapeHtml(item.case_no || '-')}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(applicantName)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(respondentName)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(caseReason)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${applyDate}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(arbGroup)}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <span class="status-badge ${statusInfo.class}">${statusInfo.text}</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <i class="fas fa-chevron-down text-gray-400 transition-transform" id="icon-${index}"></i>
+                        </td>
+                    </tr>
+                    <tr id="detail-${index}" class="hidden">
+                        <td colspan="9" class="detail-panel px-6 py-4">
+                            ${renderDetailPanel(item)}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            updatePagination();
+            showResult();
+        }
+
+        // 渲染详情面板
+        function renderDetailPanel(item) {
+            const applicant = item.applicant_arr?.[0] || {};
+            const respondent = item.respondent_arr?.[0] || {};
+            const caseInfo = item.cases || {};
+            const group = item.groups || {};
+            
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                    <!-- 申请人信息 -->
+                    <div class="bg-white rounded-lg p-4 shadow-sm">
+                        <h4 class="font-semibold text-green-700 mb-3 border-b pb-2">
+                            <i class="fas fa-user mr-2"></i>申请人信息
+                        </h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">姓名:</span>
+                                <span class="font-medium">${escapeHtml(applicant.name || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">性别:</span>
+                                <span>${escapeHtml(applicant.sex || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">民族:</span>
+                                <span>${escapeHtml(applicant.nation || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">身份证号:</span>
+                                <span class="font-mono text-xs">${escapeHtml(applicant.id_number || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">联系电话:</span>
+                                <span>${escapeHtml(applicant.mobile || '-')}</span>
+                            </div>
+                            <div class="mt-2 pt-2 border-t">
+                                <span class="text-gray-500">户籍地址:</span>
+                                <p class="mt-1 text-gray-700">${escapeHtml(applicant.registered_permanent_residence || '-')}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 被申请人信息 -->
+                    <div class="bg-white rounded-lg p-4 shadow-sm">
+                        <h4 class="font-semibold text-blue-700 mb-3 border-b pb-2">
+                            <i class="fas fa-building mr-2"></i>被申请人信息
+                        </h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">单位名称:</span>
+                                <span class="font-medium">${escapeHtml(respondent.name || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">统一代码:</span>
+                                <span class="font-mono text-xs">${escapeHtml(respondent.social_code || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">法定代表人:</span>
+                                <span>${escapeHtml(respondent.legal_name || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">联系电话:</span>
+                                <span>${escapeHtml(respondent.mobile || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">企业性质:</span>
+                                <span>${escapeHtml(respondent.company_nature || '-')}</span>
+                            </div>
+                            <div class="mt-2 pt-2 border-t">
+                                <span class="text-gray-500">注册地址:</span>
+                                <p class="mt-1 text-gray-700">${escapeHtml(respondent.company_address || '-')}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 案件处理信息 -->
+                    <div class="bg-white rounded-lg p-4 shadow-sm">
+                        <h4 class="font-semibold text-purple-700 mb-3 border-b pb-2">
+                            <i class="fas fa-gavel mr-2"></i>案件处理信息
+                        </h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">案件来源:</span>
+                                <span>${escapeHtml(caseInfo.case_source || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">收件时间:</span>
+                                <span>${formatDateTime(item.receive_at)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">仲裁员:</span>
+                                <span class="font-medium text-green-700">${escapeHtml(group.arbitrator || '-')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">书记员:</span>
+                                <span>${escapeHtml(group.clerk || '-')}</span>
+                            </div>
+                            ${item.review_opinion ? `
+                            <div class="mt-2 pt-2 border-t">
+                                <span class="text-gray-500">审核意见:</span>
+                                <p class="mt-1 text-green-700">${escapeHtml(item.review_opinion)}</p>
+                                <p class="text-xs text-gray-400 mt-1">${formatDateTime(item.review_at)}</p>
+                            </div>
+                            ` : ''}
+                            ${item.approval_opinion ? `
+                            <div class="mt-2 pt-2 border-t">
+                                <span class="text-gray-500">审批意见:</span>
+                                <p class="mt-1 text-blue-700">${escapeHtml(item.approval_opinion)}</p>
+                                <p class="text-xs text-gray-400 mt-1">${formatDateTime(item.approval_at)}</p>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 切换详情显示
+        function toggleDetail(index) {
+            const detailRow = document.getElementById(`detail-${index}`);
+            const icon = document.getElementById(`icon-${index}`);
+            
+            if (detailRow.classList.contains('hidden')) {
+                detailRow.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                detailRow.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // 更新分页
+        function updatePagination() {
+            const totalPages = Math.ceil(totalItems / pageSize);
+            const start = (currentPage - 1) * pageSize + 1;
+            const end = Math.min(currentPage * pageSize, totalItems);
+            
+            document.getElementById('paginationInfo').textContent = 
+                totalItems > 0 ? `显示 ${start}-${end} 条，共 ${totalItems} 条` : '暂无数据';
+            
+            document.getElementById('pageInfo').textContent = 
+                totalPages > 0 ? `第 ${currentPage} / ${totalPages} 页` : '-';
+            
+            document.getElementById('prevBtn').disabled = currentPage <= 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages || totalPages === 0;
+        }
+
+        // 切换页码
+        function changePage(delta) {
+            const totalPages = Math.ceil(totalItems / pageSize);
+            const newPage = currentPage + delta;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                fetchData();
+                // 滚动到顶部
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        // 重置查询
+        function resetQuery() {
+            document.getElementById('dateInput').value = '';
+            document.getElementById('caseNoInput').value = '';
+            
+            // 重置状态按钮
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('status-all').classList.add('active');
+            
+            currentParams = {};
+            currentPage = 1;
+            totalItems = 0;
+            
+            // 重新查询
+            queryReceiveData();
+        }
+
+        // 显示加载状态
+        function showLoading() {
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示结果
+        function showResult() {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('resultContainer').classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示空状态
+        function showEmpty() {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示错误
+        function showError(message) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('errorState').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            if (!text) return '-';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        // 格式化日期
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr.split(' ')[0] || dateStr;
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            
+            return `${year}-${month}-${day}`;
+        }
+
+        // 格式化日期时间
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const minute = String(date.getMinutes()).padStart(2, '0');
+            
+            return `${year}-${month}-${day} ${hour}:${minute}`;
+        }
+
+        // 回车事件
+        document.getElementById('caseNoInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                queryReceiveData();
+            }
+        });
+    </script>
+</body>
+</html>

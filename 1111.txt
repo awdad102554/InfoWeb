@@ -1,0 +1,11 @@
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&application_date=2026-02-02   //日期
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20    //无条件
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&status=0   //状态：收件登记
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&status=5 //提交
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&status=1 //审核通过
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&status=3 //审批通过
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&status=2 //审核不通过
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&status=4  //审批不通过
+http://10.96.10.78:8080/v1/api/admin/arb/receive?page=1&page_size=20&case_no=[2026]91   //用户填写 202691  实际传参[2026]91
+
+

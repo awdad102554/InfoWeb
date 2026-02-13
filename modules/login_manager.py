@@ -34,18 +34,21 @@ class LoginManager:
         
         # 检查是否有有效的登录信息（除非强制重新登录）
         if not force:
-            valid_login = self.db_manager.get_valid_login_info(username)
-            if valid_login:
-                logger.info("使用缓存的登录信息")
-                self.current_auth_key = valid_login['authKey']
-                self.current_session_id = valid_login['sessionId']
-                return {
-                    'code': 200,
-                    'message': '使用缓存的登录信息',
-                    'authKey': self.current_auth_key,
-                    'sessionId': self.current_session_id,
-                    'expiry_time': valid_login['expiry_time'].isoformat() if valid_login['expiry_time'] else None
-                }
+            try:
+                valid_login = self.db_manager.get_valid_login_info(username)
+                if valid_login:
+                    logger.info("使用缓存的登录信息")
+                    self.current_auth_key = valid_login['authKey']
+                    self.current_session_id = valid_login['sessionId']
+                    return {
+                        'code': 200,
+                        'message': '使用缓存的登录信息',
+                        'authKey': self.current_auth_key,
+                        'sessionId': self.current_session_id,
+                        'expiry_time': valid_login['expiry_time'].isoformat() if valid_login['expiry_time'] else None
+                    }
+            except Exception as e:
+                logger.warning(f"从数据库获取登录信息失败，将重新登录: {e}")
         
         # 执行登录请求
         logger.info(f"执行登录请求: {username}")
@@ -83,8 +86,11 @@ class LoginManager:
                     self.current_auth_key = auth_key
                     self.current_session_id = session_id
                     
-                    # 保存到数据库
-                    self.db_manager.save_login_info(username, password, auth_key, session_id)
+                    # 尝试保存到数据库（失败不影响登录）
+                    try:
+                        self.db_manager.save_login_info(username, password, auth_key, session_id)
+                    except Exception as e:
+                        logger.warning(f"保存登录信息到数据库失败: {e}")
                     
                     logger.info(f"登录成功: {username}")
                     return {
@@ -161,25 +167,30 @@ class LoginManager:
         """
         username = self.config.LOGIN_USERNAME
         
-        # 检查登录是否过期
-        if self.db_manager.is_login_expired(username):
-            logger.info("登录已过期，重新登录...")
+        try:
+            # 检查登录是否过期
+            if self.db_manager.is_login_expired(username):
+                logger.info("登录已过期，重新登录...")
+                login_result = self.login(force=True)
+                return login_result['code'] == 200
+            else:
+                # 确保当前有有效的登录信息
+                if not self.current_auth_key or not self.current_session_id:
+                    valid_login = self.db_manager.get_valid_login_info(username)
+                    if valid_login:
+                        self.current_auth_key = valid_login['authKey']
+                        self.current_session_id = valid_login['sessionId']
+                        logger.info("已加载有效的登录信息")
+                        return True
+                    else:
+                        logger.warning("数据库中有记录但加载失败，尝试重新登录")
+                        login_result = self.login(force=True)
+                        return login_result['code'] == 200
+                return True
+        except Exception as e:
+            logger.warning(f"检查登录状态时出错: {e}，尝试重新登录")
             login_result = self.login(force=True)
             return login_result['code'] == 200
-        else:
-            # 确保当前有有效的登录信息
-            if not self.current_auth_key or not self.current_session_id:
-                valid_login = self.db_manager.get_valid_login_info(username)
-                if valid_login:
-                    self.current_auth_key = valid_login['authKey']
-                    self.current_session_id = valid_login['sessionId']
-                    logger.info("已加载有效的登录信息")
-                    return True
-                else:
-                    logger.warning("数据库中有记录但加载失败，尝试重新登录")
-                    login_result = self.login(force=True)
-                    return login_result['code'] == 200
-            return True
     
     def get_login_status(self):
         """

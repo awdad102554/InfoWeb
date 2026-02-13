@@ -21,6 +21,7 @@ import logging
 from datetime import datetime
 import pymysql
 import json
+import requests
 
 # 导入原有模块
 from config import Config
@@ -62,6 +63,12 @@ def query_page():
 def cases_manage_page():
     """案件管理页面"""
     return render_template('cases_manage.html')
+
+
+@app.route('/receive_query')
+def receive_query_page():
+    """收件查询页面"""
+    return render_template('receive_query.html')
 
 
 # ============================================
@@ -823,6 +830,144 @@ def internal_server_error(error):
 
 
 # ============================================
+# 收件查询API（代理内部服务）
+# ============================================
+
+INTERNAL_API_BASE = "http://10.96.10.78:8080/v1/api/admin/arb/receive"
+
+@app.route('/api/receive/query', methods=['GET'])
+def query_receive():
+    """
+    收件查询接口 - 代理调用内部服务
+    支持参数：
+    - page: 页码（默认1）
+    - page_size: 每页数量（默认20）
+    - application_date: 申请日期（格式：YYYY-MM-DD）
+    - status: 状态（0-收件登记, 1-审核通过, 2-审核不通过, 3-审批通过, 4-审批不通过, 5-提交）
+    - case_no: 案件编号（用户输入202691，实际传参[2026]91）
+    """
+    try:
+        # 获取查询参数
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 20))
+        application_date = request.args.get('application_date')
+        status = request.args.get('status')
+        case_no = request.args.get('case_no')
+        
+        # 构建内部API请求参数（内部API使用从0开始的页码）
+        params = {
+            'page': page - 1,  # 转换为从0开始的页码
+            'page_size': page_size
+        }
+        
+        if application_date:
+            params['application_date'] = application_date
+            
+        if status:
+            params['status'] = status
+            logger.info(f"状态筛选: {status}")
+            
+        if case_no:
+            # 支持多种输入格式，统一转换为 [2026]91 格式
+            original_case_no = case_no.strip()
+            converted_case_no = original_case_no
+            
+            # 提取方括号中的内容
+            import re
+            match = re.search(r'\[(\d{4})\](\d+)', original_case_no)
+            if match:
+                # 已经是 [2026]91 或包含这种格式
+                converted_case_no = f"[{match.group(1)}]{match.group(2)}"
+            elif original_case_no.isdigit() and len(original_case_no) >= 6:
+                # 纯数字格式 202691
+                year = original_case_no[:4]
+                num = original_case_no[4:]
+                converted_case_no = f"[{year}]{num}"
+            elif re.match(r'^\d{4}\]\d+$', original_case_no):
+                # 2026]91 格式，补充左括号
+                converted_case_no = f"[{original_case_no}"
+            
+            params['case_no'] = converted_case_no
+            logger.info(f"案件编号转换: {original_case_no} -> {converted_case_no}")
+        
+        # 检查并更新登录状态
+        if not login_manager.check_and_renew_login():
+            logger.error("获取有效登录信息失败")
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询收件信息',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 获取带认证信息的请求头
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            logger.error("获取认证请求头失败")
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        logger.info(f"收件查询请求: {INTERNAL_API_BASE}")
+        logger.info(f"  原始参数: page={page}, page_size={page_size}, application_date={application_date}, status={status}, case_no={case_no}")
+        logger.info(f"  转换后参数: {params}")
+        
+        # 调用内部服务（带认证头）
+        response = requests.get(
+            INTERNAL_API_BASE,
+            headers=headers,
+            params=params,
+            timeout=30
+        )
+        
+        # 返回结果
+        if response.status_code == 200:
+            data = response.json()
+            return jsonify({
+                'code': 200,
+                'message': '查询成功',
+                'data': data,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            logger.error(f"内部服务返回错误: {response.status_code}, {response.text}")
+            return jsonify({
+                'code': response.status_code,
+                'message': f'内部服务错误: {response.status_code}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        logger.error("收件查询超时")
+        return jsonify({
+            'code': 504,
+            'message': '请求内部服务超时',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"收件查询请求异常: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'请求内部服务失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"收件查询错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+# ============================================
 # 健康检查
 # ============================================
 
@@ -850,6 +995,7 @@ def start_server():
     logger.info("  GET  /              - 劳动仲裁申请书在线填写（支持编辑: ?case_id=xxx）")
     logger.info("  GET  /query         - 案件查询页面")
     logger.info("  GET  /cases         - 案件管理列表")
+    logger.info("  GET  /receive_query - 收件查询页面")
     logger.info("  [内部API服务]")
     logger.info("  GET  /api/status    - 服务状态")
     logger.info("  GET  /api/login/status    - 登录状态")
@@ -862,6 +1008,7 @@ def start_server():
     logger.info("  GET  /api/cases/query     - 查询案件")
     logger.info("  GET  /api/cases/list      - 案件列表")
     logger.info("  DELETE /api/cases/<id>    - 删除案件")
+    logger.info("  GET  /api/receive/query   - 收件查询（代理内部服务）")
     logger.info("=" * 60)
     
     app.run(
