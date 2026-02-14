@@ -18,8 +18,8 @@ class Config:
     LOGIN_USERNAME = "huhailiang"
     LOGIN_PASSWORD = "eyJpdiI6IjFDalU2azNBY1UrVkhUazBad0ZpY3c9PSIsInZhbHVlIjoiNE16d1NHXC9ISkV0Z1ZnalFNSUZldU9hUDMwYTNNaGxhMldRU09Ic0FkeFU9IiwibWFjIjoiM2MyZjVhYWRkNjliNThhMjc4YjE2MThiMmU1NmNjMzIxYjAyMTkxM2IzZjVjN2MyNjFlNzliYTQ1NjQ5MTM3ZSJ9"
     
-    # 过期时间配置（18小时）
-    SESSION_EXPIRY_HOURS = 18
+    # 过期时间配置（10小时）
+    SESSION_EXPIRY_HOURS = 10
     
     # Flask配置
     FLASK_HOST = "0.0.0.0"

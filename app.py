@@ -71,6 +71,12 @@ def receive_query_page():
     return render_template('receive_query.html')
 
 
+@app.route('/receive_detail')
+def receive_detail_page():
+    """收件详情页面"""
+    return render_template('receive_detail.html')
+
+
 # ============================================
 # 内部API服务（原Info项目）
 # ============================================
@@ -967,6 +973,102 @@ def query_receive():
         }), 500
 
 
+@app.route('/api/receive/detail', methods=['GET'])
+def query_receive_detail():
+    """
+    收件详情查询接口 - 代理调用内部服务
+    参数:
+      - id: 收件记录ID（必填）
+    """
+    try:
+        # 获取查询参数
+        item_id = request.args.get('id')
+        
+        if not item_id:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: id',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # 检查并更新登录状态
+        if not login_manager.check_and_renew_login():
+            logger.error("获取有效登录信息失败")
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询详情',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 获取带认证信息的请求头
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            logger.error("获取认证请求头失败")
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 构建内部API URL
+        detail_url = f"{INTERNAL_API_BASE.replace('/receive', '')}/{item_id}/receive"
+        
+        logger.info(f"收件详情查询请求: {detail_url}")
+        
+        # 调用内部服务（带认证头）
+        response = requests.get(
+            detail_url,
+            headers=headers,
+            timeout=30
+        )
+        
+        # 返回结果
+        if response.status_code == 200:
+            data = response.json()
+            return jsonify({
+                'code': 200,
+                'message': '查询成功',
+                'data': data,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            logger.error(f"内部服务返回错误: {response.status_code}, {response.text}")
+            return jsonify({
+                'code': response.status_code,
+                'message': f'内部服务错误: {response.status_code}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        logger.error("收件详情查询超时")
+        return jsonify({
+            'code': 504,
+            'message': '请求内部服务超时',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"收件详情查询请求异常: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'请求内部服务失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"收件详情查询错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
 # ============================================
 # 健康检查
 # ============================================
@@ -995,7 +1097,8 @@ def start_server():
     logger.info("  GET  /              - 劳动仲裁申请书在线填写（支持编辑: ?case_id=xxx）")
     logger.info("  GET  /query         - 案件查询页面")
     logger.info("  GET  /cases         - 案件管理列表")
-    logger.info("  GET  /receive_query - 收件查询页面")
+    logger.info("  GET  /receive_query  - 收件查询页面")
+    logger.info("  GET  /receive_detail - 收件详情页面")
     logger.info("  [内部API服务]")
     logger.info("  GET  /api/status    - 服务状态")
     logger.info("  GET  /api/login/status    - 登录状态")
@@ -1009,6 +1112,7 @@ def start_server():
     logger.info("  GET  /api/cases/list      - 案件列表")
     logger.info("  DELETE /api/cases/<id>    - 删除案件")
     logger.info("  GET  /api/receive/query   - 收件查询（代理内部服务）")
+    logger.info("  GET  /api/receive/detail  - 收件详情（代理内部服务）")
     logger.info("=" * 60)
     
     app.run(

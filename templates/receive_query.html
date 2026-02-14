@@ -144,15 +144,14 @@
                 <table class="w-full">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-16">序号</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">收件编号</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-14">序号</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">收件编号</th>
                             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">申请人</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">被申请人</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">案由</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">申请日期</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">仲裁组</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">状态</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-20">操作</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">被申请人</th>
+                            <th class="px-4 py-3 pr-2 text-left text-sm font-semibold text-gray-700">案由</th>
+                            <th class="pl-2 pr-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">申请日期</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-20">状态</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-36">操作</th>
                         </tr>
                     </thead>
                     <tbody id="resultTableBody" class="divide-y divide-gray-200">
@@ -392,11 +391,6 @@
                 // 获取案由
                 const caseReason = item.cases?.case_reason || '-';
                 
-                // 获取仲裁组信息
-                const arbitrator = item.groups?.arbitrator || '-';
-                const clerk = item.groups?.clerk || '-';
-                const arbGroup = arbitrator !== '-' ? `${arbitrator} / ${clerk}` : '-';
-                
                 // 申请日期
                 const applyDate = formatDate(item.application_at || item.cases?.apply_at);
                 
@@ -405,19 +399,24 @@
                         <td class="px-4 py-3 text-sm text-gray-900">${seqNo}</td>
                         <td class="px-4 py-3 text-sm font-medium text-green-600">${escapeHtml(item.case_no || '-')}</td>
                         <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(applicantName)}</td>
-                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(respondentName)}</td>
-                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(caseReason)}</td>
-                        <td class="px-4 py-3 text-sm text-gray-700">${applyDate}</td>
-                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(arbGroup)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700 truncate max-w-xs" title="${escapeHtml(respondentName)}">${escapeHtml(respondentName)}</td>
+                        <td class="px-4 pr-2 py-3 text-sm text-gray-700">${escapeHtml(caseReason)}</td>
+                        <td class="pl-2 pr-4 py-3 text-sm text-gray-700">${applyDate}</td>
                         <td class="px-4 py-3 text-sm">
                             <span class="status-badge ${statusInfo.class}">${statusInfo.text}</span>
                         </td>
                         <td class="px-4 py-3 text-sm">
-                            <i class="fas fa-chevron-down text-gray-400 transition-transform" id="icon-${index}"></i>
+                            <div class="flex items-center gap-2">
+                                <button onclick="event.stopPropagation(); viewDetail(${item.id})" 
+                                    class="text-blue-600 hover:text-blue-800 font-medium" title="查看详情">
+                                    <i class="fas fa-eye"></i> 查看
+                                </button>
+                                <i class="fas fa-chevron-down text-gray-400 transition-transform" id="icon-${index}"></i>
+                            </div>
                         </td>
                     </tr>
                     <tr id="detail-${index}" class="hidden">
-                        <td colspan="9" class="detail-panel px-6 py-4">
+                        <td colspan="8" class="detail-panel px-6 py-4">
                             ${renderDetailPanel(item)}
                         </td>
                     </tr>
@@ -543,6 +542,11 @@
                     </div>
                 </div>
             `;
+        }
+
+        // 查看详情 - 跳转到新页面
+        function viewDetail(id) {
+            window.open(`/receive_detail?id=${id}`, '_blank');
         }
 
         // 切换详情显示
