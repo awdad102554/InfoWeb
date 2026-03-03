@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>预约仲裁申请查询 - 劳动仲裁信息查询综合服务平台</title>
+    <meta name="version" content="v1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status-btn.active {
+            background-color: #16a34a;
+            color: white;
+            border-color: #16a34a;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .row-expandable {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .row-expandable:hover {
+            background-color: #f0fdf4;
+        }
+        .detail-panel {
+            background-color: #f8fafc;
+            border-left: 4px solid #16a34a;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto max-w-7xl p-4">
+        <!-- 标题 -->
+        <header class="bg-gradient-to-r from-green-600 to-green-800 text-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold">
+                        <i class="fas fa-calendar-check mr-2"></i>预约仲裁申请查询
+                    </h1>
+                    <p class="opacity-90 mt-2">查询内部服务器预约仲裁申请数据</p>
+                </div>
+                <a href="/cases" class="bg-white text-green-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                    <i class="fas fa-arrow-left mr-2"></i>返回案件管理
+                </a>
+            </div>
+        </header>
+
+        <!-- 查询区域 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <!-- 状态筛选按钮 -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">状态筛选</label>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="setStatus('')" id="status-all" class="status-btn active px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        全部
+                    </button>
+                    <button onclick="setStatus('0')" id="status-0" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        待审核
+                    </button>
+                    <button onclick="setStatus('1')" id="status-1" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        审核通过
+                    </button>
+                    <button onclick="setStatus('2')" id="status-2" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        审核不通过
+                    </button>
+                    <button onclick="setStatus('3')" id="status-3" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        现场确认同意
+                    </button>
+                    <button onclick="setStatus('4')" id="status-4" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        现场确认不同意
+                    </button>
+                </div>
+            </div>
+
+            <!-- 查询条件 -->
+            <div class="flex flex-wrap gap-3 items-end">
+                <div class="w-36">
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">申请日期</label>
+                    <input type="date" id="dateInput" 
+                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
+                        value="">
+                </div>
+                <div class="w-40">
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">申请人</label>
+                    <input type="text" id="applicantInput" 
+                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
+                        placeholder="申请人姓名">
+                </div>
+                <div class="w-48">
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">被申请人</label>
+                    <input type="text" id="respondentInput" 
+                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
+                        placeholder="被申请人名称">
+                </div>
+                <button onclick="queryReserveData()" 
+                    class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-1.5 px-5 rounded-lg transition h-9">
+                    <i class="fas fa-search mr-1"></i>查询
+                </button>
+                <button onclick="resetQuery()" 
+                    class="bg-gray-500 hover:bg-gray-600 text-white text-sm font-medium py-1.5 px-5 rounded-lg transition h-9">
+                    <i class="fas fa-undo mr-1"></i>重置
+                </button>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div id="loadingState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-gray-600">正在查询预约仲裁申请数据...</p>
+        </div>
+
+        <!-- 结果列表 -->
+        <div id="resultContainer" class="bg-white rounded-xl shadow-lg overflow-hidden hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-800">
+                    <i class="fas fa-list mr-2 text-green-600"></i>查询结果
+                </h2>
+                <span id="resultCount" class="text-sm text-gray-600"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-16">序号</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-20">申请方</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-40">被申请方</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-28">申请日期</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-28">回复时间</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">回复意见</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">状态</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-24">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultTableBody" class="divide-y divide-gray-200">
+                        <!-- 动态填充 -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 分页 -->
+            <div class="bg-gray-50 px-6 py-4 flex justify-between items-center border-t border-gray-200">
+                <span id="paginationInfo" class="text-sm text-gray-600"></span>
+                <div class="flex gap-2">
+                    <button id="prevBtn" onclick="changePage(-1)" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="pageInfo" class="px-4 py-2 text-sm text-gray-700"></span>
+                    <button id="nextBtn" onclick="changePage(1)" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 空状态提示 -->
+        <div id="emptyState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <i class="fas fa-inbox text-gray-300 text-5xl mb-4"></i>
+            <p class="text-gray-500 text-lg">暂无数据</p>
+            <p class="text-gray-400 text-sm mt-2">请调整查询条件后点击查询</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <div id="errorState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <i class="fas fa-exclamation-circle text-red-400 text-5xl mb-4"></i>
+            <p class="text-red-500 text-lg" id="errorMessage">查询失败</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = "/api";
+        let currentPage = 1;
+        let pageSize = 10;
+        let totalItems = 0;
+        let currentParams = {};
+        let currentData = []; // 保存当前数据以便展开详情
+
+        // 状态映射
+        const statusMap = {
+            0: { text: '待审核', class: 'bg-yellow-100 text-yellow-800' },
+            1: { text: '审核通过', class: 'bg-green-100 text-green-800' },
+            2: { text: '审核不通过', class: 'bg-red-100 text-red-800' },
+            3: { text: '现场确认同意', class: 'bg-blue-100 text-blue-800' },
+            4: { text: '现场确认不同意', class: 'bg-orange-100 text-orange-800' },
+        };
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            // 默认加载全部数据
+            queryReserveData();
+        });
+
+        // 设置状态
+        function setStatus(status) {
+            // 更新按钮样式
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(status === '' ? 'status-all' : `status-${status}`).classList.add('active');
+            
+            // 清空其他筛选条件
+            document.getElementById('dateInput').value = '';
+            document.getElementById('applicantInput').value = '';
+            document.getElementById('respondentInput').value = '';
+            
+            // 构建参数（空字符串不加入参数）
+            currentParams = {};
+            if (status) currentParams.status = status;
+            
+            currentPage = 1;
+            fetchData();
+        }
+
+        // 查询预约仲裁申请数据
+        async function queryReserveData() {
+            const date = document.getElementById('dateInput').value;
+            const applicant = document.getElementById('applicantInput').value.trim();
+            const respondent = document.getElementById('respondentInput').value.trim();
+            
+            // 获取当前选中的状态
+            let status = '';
+            const activeBtn = document.querySelector('.status-btn.active');
+            if (activeBtn && activeBtn.id !== 'status-all') {
+                status = activeBtn.id.replace('status-', '');
+            }
+            
+            currentParams = {};
+            if (date) currentParams.submit_at = date;
+            if (applicant) currentParams.applicant = applicant;
+            if (respondent) currentParams.respondent = respondent;
+            if (status) currentParams.status = status;
+            
+            currentPage = 1;
+            await fetchData();
+        }
+
+        // 获取数据
+        async function fetchData() {
+            showLoading();
+            
+            try {
+                // 构建查询参数（过滤掉空值）
+                const paramsObj = {
+                    type: 1,
+                    page: currentPage,
+                    page_size: pageSize
+                };
+                
+                // 只添加非空参数
+                Object.keys(currentParams).forEach(key => {
+                    const value = currentParams[key];
+                    if (value !== '' && value !== undefined && value !== null) {
+                        paramsObj[key] = value;
+                    }
+                });
+                
+                const params = new URLSearchParams(paramsObj);
+                const requestUrl = `${API_BASE_URL}/reserve/query?${params}`;
+                
+                // 调试日志
+                console.log('请求URL:', requestUrl);
+                console.log('请求参数:', paramsObj);
+                
+                const response = await fetch(requestUrl);
+                
+                console.log('响应状态:', response.status);
+                
+                // 检查响应状态
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status} ${response.statusText}`);
+                }
+                
+                // 获取响应文本
+                const responseText = await response.text();
+                console.log('响应文本前200字符:', responseText.substring(0, 200));
+                
+                // 尝试解析 JSON
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('JSON解析失败:', parseError);
+                    console.error('响应内容:', responseText);
+                    throw new Error('服务器返回的数据格式不正确');
+                }
+                
+                console.log('解析后的结果:', result);
+                
+                // 处理嵌套结构
+                const innerResult = result.data || {};
+                if ((result.code === 200 || result.code === 0) && 
+                    (innerResult.code === 200 || innerResult.code === 0 || innerResult.code === undefined)) {
+                    renderData(innerResult.data || innerResult);
+                } else {
+                    const errorMsg = innerResult.message || result.message || `查询失败 (code: ${result.code})`;
+                    showError(errorMsg);
+                }
+            } catch (error) {
+                console.error('查询失败:', error);
+                showError('查询失败: ' + error.message);
+            }
+        }
+
+        // 渲染数据
+        function renderData(data) {
+            // API返回的数据结构: { data: [...], totalNum: number, page: [offset, limit] }
+            const list = data.data || [];
+            totalItems = data.totalNum || 0;
+            currentData = list; // 保存数据
+            
+            if (list.length === 0) {
+                showEmpty();
+                return;
+            }
+            
+            const tbody = document.getElementById('resultTableBody');
+            document.getElementById('resultCount').textContent = `共 ${totalItems} 条记录`;
+            
+            tbody.innerHTML = list.map((item, index) => {
+                const seqNo = (currentPage - 1) * pageSize + index + 1;
+                const statusInfo = statusMap[item.status] || { text: '未知', class: 'bg-gray-100 text-gray-800' };
+                
+                // 获取申请人信息
+                const applicantName = item.applicant || item.applicant_name || '-';
+                
+                // 获取被申请人信息
+                const respondentName = item.respondent || item.respondent_name || '-';
+                
+                // 申请日期
+                const submitDate = formatDate(item.submit_at || item.apply_at || item.created_at);
+                
+                // 审核时限 - 从reason_at计算或显示为-
+                const reviewDeadline = '-';
+                
+                // 回复意见 - 使用reason字段
+                const replyOpinion = item.reason || '-';
+                
+                return `
+                    <tr class="row-expandable fade-in">
+                        <td class="px-4 py-3 text-sm text-gray-900">${seqNo}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700 truncate" title="${escapeHtml(applicantName)}">${escapeHtml(applicantName)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700 truncate max-w-xs" title="${escapeHtml(respondentName)}">${escapeHtml(respondentName)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${submitDate}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${formatDate(item.reason_at)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700 truncate max-w-xs" title="${escapeHtml(replyOpinion)}">${escapeHtml(replyOpinion)}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <span class="status-badge ${statusInfo.class}">${statusInfo.text}</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <button onclick="event.stopPropagation(); viewDetail(${item.id})" 
+                                class="text-blue-600 hover:text-blue-800 font-medium" title="查看详情">
+                                <i class="fas fa-eye"></i> 查看
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            updatePagination();
+            showResult();
+        }
+
+        // 查看详情 - 跳转到新页面
+        function viewDetail(id) {
+            window.open(`/reserve_detail?id=${id}`, '_blank');
+        }
+
+        // 更新分页
+        function updatePagination() {
+            const totalPages = Math.ceil(totalItems / pageSize);
+            const start = (currentPage - 1) * pageSize + 1;
+            const end = Math.min(currentPage * pageSize, totalItems);
+            
+            document.getElementById('paginationInfo').textContent = 
+                totalItems > 0 ? `显示 ${start}-${end} 条，共 ${totalItems} 条` : '暂无数据';
+            
+            document.getElementById('pageInfo').textContent = 
+                totalPages > 0 ? `第 ${currentPage} / ${totalPages} 页` : '-';
+            
+            document.getElementById('prevBtn').disabled = currentPage <= 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages || totalPages === 0;
+        }
+
+        // 切换页码
+        function changePage(delta) {
+            const totalPages = Math.ceil(totalItems / pageSize);
+            const newPage = currentPage + delta;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                fetchData();
+                // 滚动到顶部
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        // 重置查询
+        function resetQuery() {
+            document.getElementById('dateInput').value = '';
+            document.getElementById('applicantInput').value = '';
+            document.getElementById('respondentInput').value = '';
+            
+            // 重置状态按钮
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('status-all').classList.add('active');
+            
+            currentParams = {};
+            currentPage = 1;
+            totalItems = 0;
+            
+            // 重新查询
+            queryReserveData();
+        }
+
+        // 显示加载状态
+        function showLoading() {
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示结果
+        function showResult() {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('resultContainer').classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示空状态
+        function showEmpty() {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示错误
+        function showError(message) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('errorState').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            if (!text) return '-';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        // 格式化日期
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr.split(' ')[0] || dateStr;
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            
+            return `${year}-${month}-${day}`;
+        }
+
+        // 回车事件
+        document.getElementById('applicantInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                queryReserveData();
+            }
+        });
+        document.getElementById('respondentInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                queryReserveData();
+            }
+        });
+    </script>
+</body>
+</html>

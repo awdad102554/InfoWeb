@@ -6,8 +6,8 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>收件查询 - 劳动仲裁信息查询综合服务平台</title>
-    <meta name="version" content="v2.2">
+    <title>立案查询 - 劳动仲裁信息查询综合服务平台</title>
+    <meta name="version" content="v1.1">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -18,7 +18,7 @@
         }
         .loading-spinner {
             border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
+            border-top: 3px solid #9333ea;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -27,11 +27,6 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
-        }
-        .status-btn.active {
-            background-color: #16a34a;
-            color: white;
-            border-color: #16a34a;
         }
         .status-badge {
             display: inline-flex;
@@ -46,26 +41,26 @@
             transition: background-color 0.2s;
         }
         .row-expandable:hover {
-            background-color: #f0fdf4;
+            background-color: #faf5ff;
         }
         .detail-panel {
-            background-color: #f8fafc;
-            border-left: 4px solid #16a34a;
+            background-color: #faf5ff;
+            border-left: 4px solid #9333ea;
         }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div class="container mx-auto max-w-7xl p-4">
         <!-- 标题 -->
-        <header class="bg-gradient-to-r from-green-600 to-green-800 text-white rounded-xl shadow-lg p-6 mb-6">
+        <header class="bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded-xl shadow-lg p-6 mb-6">
             <div class="flex justify-between items-center">
                 <div>
                     <h1 class="text-2xl font-bold">
-                        <i class="fas fa-inbox mr-2"></i>收件查询
+                        <i class="fas fa-gavel mr-2"></i>立案查询
                     </h1>
-                    <p class="opacity-90 mt-2">查询内部服务器收件数据</p>
+                    <p class="opacity-90 mt-2">查询内部服务器立案处理数据</p>
                 </div>
-                <a href="/cases" class="bg-white text-green-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                <a href="/cases" class="bg-white text-purple-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
                     <i class="fas fa-arrow-left mr-2"></i>返回案件管理
                 </a>
             </div>
@@ -73,56 +68,21 @@
 
         <!-- 查询区域 -->
         <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <!-- 状态筛选按钮 -->
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">状态筛选</label>
-                <div class="flex flex-wrap gap-2">
-                    <button onclick="setStatus('')" id="status-all" class="status-btn active px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-                        全部
-                    </button>
-                    <button onclick="setStatus('0')" id="status-0" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-                        收件登记
-                    </button>
-                    <button onclick="setStatus('5')" id="status-5" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-                        已提交
-                    </button>
-                    <button onclick="setStatus('1')" id="status-1" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-                        审核通过
-                    </button>
-                    <button onclick="setStatus('3')" id="status-3" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-                        审批通过
-                    </button>
-                    <button onclick="setStatus('2')" id="status-2" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-                        审核不通过
-                    </button>
-                    <button onclick="setStatus('4')" id="status-4" class="status-btn px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-                        审批不通过
-                    </button>
-                </div>
-            </div>
-
-            <!-- 查询条件 -->
             <div class="flex flex-wrap gap-3 items-end">
-                <div class="w-36">
-                    <label class="block text-sm font-medium text-gray-700 mb-1.5">申请日期</label>
-                    <input type="date" id="dateInput" 
-                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
-                        value="">
-                </div>
-                <div class="w-36">
+                <div class="w-40">
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">案件编号</label>
                     <input type="text" id="caseNoInput" 
-                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
+                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 h-9"
                         placeholder="如: 202691">
                 </div>
                 <div class="w-48">
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">关键字</label>
                     <input type="text" id="keywordInput" 
-                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 h-9"
+                        class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 h-9"
                         placeholder="申请人/被申请人/案由">
                 </div>
-                <button onclick="queryReceiveData()" 
-                    class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-1.5 px-5 rounded-lg transition h-9">
+                <button onclick="queryHandleData()" 
+                    class="bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium py-1.5 px-5 rounded-lg transition h-9">
                     <i class="fas fa-search mr-1"></i>查询
                 </button>
                 <button onclick="resetQuery()" 
@@ -135,14 +95,14 @@
         <!-- 加载状态 -->
         <div id="loadingState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
             <div class="loading-spinner mx-auto mb-4"></div>
-            <p class="text-gray-600">正在查询收件数据...</p>
+            <p class="text-gray-600">正在查询立案数据...</p>
         </div>
 
         <!-- 结果列表 -->
         <div id="resultContainer" class="bg-white rounded-xl shadow-lg overflow-hidden hidden">
             <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
                 <h2 class="text-lg font-semibold text-gray-800">
-                    <i class="fas fa-list mr-2 text-green-600"></i>查询结果
+                    <i class="fas fa-list mr-2 text-purple-600"></i>查询结果
                 </h2>
                 <span id="resultCount" class="text-sm text-gray-600"></span>
             </div>
@@ -150,13 +110,13 @@
                 <table class="w-full">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-20">序号</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-48">收件编号</th>
-                            <th class="px-2 py-3 text-left text-sm font-semibold text-gray-700 w-20">申请人</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-16">序号</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-48">案件编号</th>
+                            <th class="px-2 py-3 text-left text-sm font-semibold text-gray-700 w-24">申请人</th>
                             <th class="px-2 py-3 text-left text-sm font-semibold text-gray-700 w-32">被申请人</th>
-                            <th class="px-4 py-3 pr-2 text-left text-sm font-semibold text-gray-700 w-32">案由</th>
-                            <th class="pl-2 pr-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">申请日期</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-[108px]">状态</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">案由</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-28">立案日期</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-24">状态</th>
                             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-44">操作</th>
                         </tr>
                     </thead>
@@ -198,10 +158,10 @@
     </div>
 
     <!-- 生成文书弹窗 -->
-    <div id="generateModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-        <div class="bg-white rounded-xl shadow-2xl w-[900px] max-h-[80vh] flex flex-col">
+    <div id="generateModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-[1000px] max-w-[95vw] h-[90vh] flex flex-col">
             <!-- 弹窗头部 -->
-            <div class="bg-gradient-to-r from-green-600 to-green-800 text-white px-6 py-4 rounded-t-xl flex justify-between items-center">
+            <div class="bg-gradient-to-r from-purple-600 to-purple-800 text-white px-6 py-4 rounded-t-xl flex justify-between items-center">
                 <div>
                     <h3 class="text-lg font-bold"><i class="fas fa-file-alt mr-2"></i>生成文书</h3>
                     <p class="text-sm opacity-90 mt-1" id="modalCaseNo">案件编号: -</p>
@@ -216,33 +176,33 @@
                 <p class="text-gray-600 text-sm mb-4">请选择要生成的文书模板（最多三层选择）：</p>
                 
                 <!-- 三级选择器 -->
-                <div class="flex gap-4 flex-1 min-h-[300px]">
+                <div class="flex gap-4 flex-1" style="height: calc(90vh - 220px); min-height: 550px;">
                     <!-- 第一级 -->
-                    <div class="flex-1 border border-gray-200 rounded-lg overflow-hidden flex flex-col">
-                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                    <div class="w-1/3 border border-gray-200 rounded-lg flex flex-col">
+                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex-shrink-0">
                             <span class="text-sm font-medium text-gray-700">第一步：选择分类</span>
                         </div>
-                        <div id="level1List" class="flex-1 overflow-y-auto p-2">
+                        <div id="level1List" class="flex-1 overflow-y-auto p-2" style="padding-bottom: 60px;">
                             <!-- 动态填充 -->
                         </div>
                     </div>
                     
                     <!-- 第二级 -->
-                    <div class="flex-1 border border-gray-200 rounded-lg overflow-hidden flex flex-col">
-                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                    <div class="w-1/3 border border-gray-200 rounded-lg flex flex-col">
+                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex-shrink-0">
                             <span class="text-sm font-medium text-gray-700">第二步：选择子项</span>
                         </div>
-                        <div id="level2List" class="flex-1 overflow-y-auto p-2">
+                        <div id="level2List" class="flex-1 overflow-y-auto p-2" style="padding-bottom: 60px;">
                             <div class="text-center text-gray-400 mt-8 text-sm">请先选择分类</div>
                         </div>
                     </div>
                     
                     <!-- 第三级 -->
-                    <div class="flex-1 border border-gray-200 rounded-lg overflow-hidden flex flex-col">
-                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                    <div class="w-1/3 border border-gray-200 rounded-lg flex flex-col">
+                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex-shrink-0">
                             <span class="text-sm font-medium text-gray-700">第三步：选择文书</span>
                         </div>
-                        <div id="level3List" class="flex-1 overflow-y-auto p-2">
+                        <div id="level3List" class="flex-1 overflow-y-auto p-2" style="padding-bottom: 60px;">
                             <div class="text-center text-gray-400 mt-8 text-sm">请先选择子项</div>
                         </div>
                     </div>
@@ -251,7 +211,7 @@
                 <!-- 已选文件显示 -->
                 <div class="mt-4 p-3 bg-gray-50 rounded-lg">
                     <span class="text-sm text-gray-600">已选择：</span>
-                    <span id="selectedPath" class="text-sm font-medium text-green-700">无</span>
+                    <span id="selectedPath" class="text-sm font-medium text-purple-700">无</span>
                 </div>
             </div>
             
@@ -261,8 +221,8 @@
                     取消
                 </button>
                 <button id="confirmGenerateBtn" onclick="confirmGenerate()" disabled
-                    class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                    <i class="fas fa-download mr-2"></i>下载模板
+                    class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-magic mr-2"></i>生成文书
                 </button>
             </div>
         </div>
@@ -276,41 +236,28 @@
         let currentParams = {};
         let currentData = []; // 保存当前数据以便展开详情
 
-        // 状态映射
+        // 状态映射（根据实际接口返回调整）
         const statusMap = {
-            0: { text: '收件登记', class: 'bg-gray-100 text-gray-800' },
-            1: { text: '审核通过', class: 'bg-green-100 text-green-800' },
-            2: { text: '审核不通过', class: 'bg-red-100 text-red-800' },
-            3: { text: '审批通过', class: 'bg-blue-100 text-blue-800' },
-            4: { text: '审批不通过', class: 'bg-orange-100 text-orange-800' },
-            5: { text: '已提交', class: 'bg-purple-100 text-purple-800' },
+            0: { text: '待处理', class: 'bg-gray-100 text-gray-800' },
+            1: { text: '处理中', class: 'bg-blue-100 text-blue-800' },
+            2: { text: '已结案', class: 'bg-green-100 text-green-800' },
+            3: { text: '已中止', class: 'bg-red-100 text-red-800' },
+            4: { text: '已撤案', class: 'bg-orange-100 text-orange-800' },
+            24: { text: '已结案', class: 'bg-green-100 text-green-800' },
+            // 支持字符串类型的状态值
+            '待处理': { text: '待处理', class: 'bg-gray-100 text-gray-800' },
+            '处理中': { text: '处理中', class: 'bg-blue-100 text-blue-800' },
+            '已结案': { text: '已结案', class: 'bg-green-100 text-green-800' },
+            '已中止': { text: '已中止', class: 'bg-red-100 text-red-800' },
+            '已撤案': { text: '已撤案', class: 'bg-orange-100 text-orange-800' },
+            '已归档': { text: '已归档', class: 'bg-purple-100 text-purple-800' },
         };
 
         // 页面加载完成后执行
         document.addEventListener('DOMContentLoaded', function() {
             // 默认加载全部数据
-            queryReceiveData();
+            queryHandleData();
         });
-
-        // 设置状态
-        function setStatus(status) {
-            // 更新按钮样式
-            document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            document.getElementById(status === '' ? 'status-all' : `status-${status}`).classList.add('active');
-            
-            // 清空其他筛选条件
-            document.getElementById('caseNoInput').value = '';
-            document.getElementById('dateInput').value = '';
-            
-            // 构建参数（空字符串不加入参数）
-            currentParams = {};
-            if (status) currentParams.status = status;
-            
-            currentPage = 1;
-            fetchData();
-        }
 
         // 转换案件编号格式，支持多种输入：
         // 202691 -> [2026]91
@@ -345,9 +292,8 @@
             return caseNo;
         }
 
-        // 查询收件数据
-        async function queryReceiveData() {
-            const date = document.getElementById('dateInput').value;
+        // 查询立案数据
+        async function queryHandleData() {
             let caseNo = document.getElementById('caseNoInput').value.trim();
             const keyword = document.getElementById('keywordInput').value.trim();
             
@@ -358,18 +304,9 @@
                 document.getElementById('caseNoInput').value = caseNo;
             }
             
-            // 获取当前选中的状态
-            let status = '';
-            const activeBtn = document.querySelector('.status-btn.active');
-            if (activeBtn && activeBtn.id !== 'status-all') {
-                status = activeBtn.id.replace('status-', '');
-            }
-            
             currentParams = {};
-            if (date) currentParams.application_date = date;
             if (caseNo) currentParams.case_no = caseNo;
             if (keyword) currentParams.search = keyword;
-            if (status) currentParams.status = status;
             
             currentPage = 1;
             await fetchData();
@@ -395,11 +332,12 @@
                 });
                 
                 const params = new URLSearchParams(paramsObj);
-                const requestUrl = `${API_BASE_URL}/receive/query?${params}`;
+                const requestUrl = `${API_BASE_URL}/handle/query?${params}`;
                 
                 // 调试日志
                 console.log('请求URL:', requestUrl);
                 console.log('请求参数:', paramsObj);
+                console.log('当前页码 currentPage:', currentPage);
                 
                 const response = await fetch(requestUrl);
                 
@@ -427,7 +365,7 @@
                 
                 console.log('解析后的结果:', result);
                 
-                // 处理嵌套结构: {code: 200, data: {code: 200, data: {...}, message: "成功"}}
+                // 处理响应结构
                 const innerResult = result.data || {};
                 if ((result.code === 200 || result.code === 0) && 
                     (innerResult.code === 200 || innerResult.code === 0)) {
@@ -449,16 +387,18 @@
             totalItems = data.totalNum || 0;
             currentData = list; // 保存数据
             
-            // 调试：打印第一条数据的完整结构
+            // 调试信息
+            console.log(`当前页码: ${currentPage}, 返回数据条数: ${list.length}, 总条数: ${totalItems}`);
+            console.log('返回的分页信息:', data.page);
             if (list.length > 0) {
-                console.log('第一条数据:', JSON.stringify(list[0], null, 2));
-                console.log('案由相关字段:', {
-                    'item.case_reason': list[0].case_reason,
-                    'item.cases?.case_reason': list[0].cases?.case_reason,
-                    'item.reason': list[0].reason,
-                    'item.cases': list[0].cases
-                });
+                console.log('第一条数据ID:', list[0].id, '案号:', list[0].case_no);
+                console.log('最后一条数据ID:', list[list.length-1].id, '案号:', list[list.length-1].case_no);
             }
+            
+            // 调试：收集所有不同的状态值
+            const statusSet = new Set();
+            list.forEach(item => statusSet.add(item.status));
+            console.log('发现的状态值:', Array.from(statusSet));
             
             if (list.length === 0) {
                 showEmpty();
@@ -470,36 +410,52 @@
             
             tbody.innerHTML = list.map((item, index) => {
                 const seqNo = (currentPage - 1) * pageSize + index + 1;
-                const statusInfo = statusMap[item.status] || { text: '未知', class: 'bg-gray-100 text-gray-800' };
+                let statusInfo = statusMap[item.status];
+                if (!statusInfo) {
+                    // 未知状态，显示原始值
+                    statusInfo = { text: `未知(${item.status})`, class: 'bg-gray-100 text-gray-800' };
+                }
                 
-                // 获取申请人信息
-                const applicantName = item.applicant || '-';
+                // 获取申请人信息 - 根据实际返回字段调整
+                const applicantName = item.applicant || item.applicant_name || item.proposer || '-';
                 
                 // 获取被申请人信息
-                const respondentName = item.respondent || '-';
+                const respondentName = item.respondent || item.respondent_name || item.defendant || '-';
                 
-                // 获取案由 - 尝试多个可能的位置
-                const caseReason = item.case_reason || item.cases?.case_reason || item.reason || '-';
+                // 获取案由 - 兼容多种数据结构
+                let caseReason = item.case_reason || item.case_type || item.reason || '-';
+                // 如果案由为空，尝试从 item.cases 中获取
+                if (caseReason === '-' && item.cases) {
+                    if (Array.isArray(item.cases) && item.cases.length > 0) {
+                        caseReason = item.cases[0].case_reason || item.cases[0].case_type || '-';
+                    } else if (typeof item.cases === 'object') {
+                        caseReason = item.cases.case_reason || item.cases.case_type || '-';
+                    }
+                }
                 
-                // 申请日期
-                const applyDate = formatDate(item.application_at || item.cases?.apply_at);
+                // 立案日期
+                const handleDate = formatDate(item.handle_at || item.handle_date || item.create_time || item.filing_date);
                 
                 return `
                     <tr class="row-expandable fade-in" onclick="toggleDetail(${index})">
                         <td class="px-4 py-3 text-sm text-gray-900">${seqNo}</td>
-                        <td class="px-4 py-3 text-sm font-medium text-green-600">${escapeHtml(item.case_no || '-')}</td>
+                        <td class="px-4 py-3 text-sm font-medium text-purple-600">${escapeHtml(item.case_no || '-')}</td>
                         <td class="px-2 py-3 text-sm text-gray-700 truncate" title="${escapeHtml(applicantName)}">${escapeHtml(applicantName)}</td>
                         <td class="px-4 py-3 text-sm text-gray-700 truncate max-w-xs" title="${escapeHtml(respondentName)}">${escapeHtml(respondentName)}</td>
-                        <td class="px-4 pr-2 py-3 text-sm text-gray-700">${escapeHtml(caseReason)}</td>
-                        <td class="pl-2 pr-4 py-3 text-sm text-gray-700">${applyDate}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(caseReason)}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${handleDate}</td>
                         <td class="px-4 py-3 text-sm">
                             <span class="status-badge ${statusInfo.class}">${statusInfo.text}</span>
                         </td>
                         <td class="px-4 py-3 text-sm">
                             <div class="flex items-center gap-2">
                                 <button onclick="event.stopPropagation(); viewDetail(${item.id})" 
-                                    class="text-blue-600 hover:text-blue-800 font-medium" title="查看详情">
+                                    class="text-purple-600 hover:text-purple-800 font-medium" title="查看详情">
                                     <i class="fas fa-eye"></i> 查看
+                                </button>
+                                <button onclick="event.stopPropagation(); openGenerateModal(${item.id}, '${escapeHtml(item.case_no || '')}')" 
+                                    class="text-green-600 hover:text-green-800 font-medium" title="生成文书">
+                                    <i class="fas fa-file-alt"></i> 生成
                                 </button>
                                 <i class="fas fa-chevron-down text-gray-400 transition-transform" id="icon-${index}"></i>
                             </div>
@@ -517,28 +473,44 @@
             showResult();
         }
 
-        // 渲染详情面板
+        // 渲染详情面板 - 根据实际返回字段调整
         function renderDetailPanel(item) {
-            const applicant = item.applicant_arr?.[0] || {};
-            const respondent = item.respondent_arr?.[0] || {};
-            const caseInfo = item.cases || {};
-            const group = item.groups || {};
+            // 获取申请人信息
+            const applicant = item.applicant_arr?.[0] || item.applicant_info || {};
+            const respondent = item.respondent_arr?.[0] || item.respondent_info || {};
+            
+            // 获取案件信息 - 兼容 cases 是数组或对象的情况
+            let caseInfo = item.case_info || item;
+            if (item.cases) {
+                if (Array.isArray(item.cases) && item.cases.length > 0) {
+                    caseInfo = item.cases[0];
+                } else if (typeof item.cases === 'object') {
+                    caseInfo = item.cases;
+                }
+            }
+            
+            // 获取案由
+            let caseReason = item.case_reason || caseInfo.case_reason || caseInfo.case_type || '-';
+            // 如果案由为空，尝试其他字段
+            if (caseReason === '-') {
+                caseReason = item.case_type || item.reason || '-';
+            }
             
             return `
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
                     <!-- 申请人信息 -->
                     <div class="bg-white rounded-lg p-4 shadow-sm">
-                        <h4 class="font-semibold text-green-700 mb-3 border-b pb-2">
+                        <h4 class="font-semibold text-purple-700 mb-3 border-b pb-2">
                             <i class="fas fa-user mr-2"></i>申请人信息
                         </h4>
                         <div class="space-y-2">
                             <div class="flex justify-between">
                                 <span class="text-gray-500">姓名:</span>
-                                <span class="font-medium">${escapeHtml(applicant.name || '-')}</span>
+                                <span class="font-medium">${escapeHtml(applicant.name || item.applicant || item.applicant_name || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">性别:</span>
-                                <span>${escapeHtml(applicant.sex || '-')}</span>
+                                <span>${escapeHtml(applicant.sex || applicant.gender || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">民族:</span>
@@ -546,15 +518,11 @@
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">身份证号:</span>
-                                <span class="font-mono text-xs">${escapeHtml(applicant.id_number || '-')}</span>
+                                <span class="font-mono text-xs">${escapeHtml(applicant.id_number || applicant.id_card || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">联系电话:</span>
-                                <span>${escapeHtml(applicant.mobile || '-')}</span>
-                            </div>
-                            <div class="mt-2 pt-2 border-t">
-                                <span class="text-gray-500">户籍地址:</span>
-                                <p class="mt-1 text-gray-700">${escapeHtml(applicant.registered_permanent_residence || '-')}</p>
+                                <span>${escapeHtml(applicant.mobile || applicant.phone || '-')}</span>
                             </div>
                         </div>
                     </div>
@@ -567,80 +535,64 @@
                         <div class="space-y-2">
                             <div class="flex justify-between">
                                 <span class="text-gray-500">单位名称:</span>
-                                <span class="font-medium">${escapeHtml(respondent.name || '-')}</span>
+                                <span class="font-medium">${escapeHtml(respondent.name || item.respondent || item.respondent_name || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">统一代码:</span>
-                                <span class="font-mono text-xs">${escapeHtml(respondent.social_code || '-')}</span>
+                                <span class="font-mono text-xs">${escapeHtml(respondent.social_code || respondent.credit_code || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">法定代表人:</span>
-                                <span>${escapeHtml(respondent.legal_name || '-')}</span>
+                                <span>${escapeHtml(respondent.legal_name || respondent.legal_person || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">联系电话:</span>
-                                <span>${escapeHtml(respondent.mobile || '-')}</span>
+                                <span>${escapeHtml(respondent.mobile || respondent.phone || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">企业性质:</span>
-                                <span>${escapeHtml(respondent.company_nature || '-')}</span>
-                            </div>
-                            <div class="mt-2 pt-2 border-t">
-                                <span class="text-gray-500">注册地址:</span>
-                                <p class="mt-1 text-gray-700">${escapeHtml(respondent.company_address || '-')}</p>
+                                <span>${escapeHtml(respondent.company_nature || respondent.company_type || '-')}</span>
                             </div>
                         </div>
                     </div>
                     
                     <!-- 案件处理信息 -->
                     <div class="bg-white rounded-lg p-4 shadow-sm">
-                        <h4 class="font-semibold text-purple-700 mb-3 border-b pb-2">
-                            <i class="fas fa-gavel mr-2"></i>案件处理信息
+                        <h4 class="font-semibold text-green-700 mb-3 border-b pb-2">
+                            <i class="fas fa-gavel mr-2"></i>立案处理信息
                         </h4>
                         <div class="space-y-2">
                             <div class="flex justify-between">
                                 <span class="text-gray-500">案件来源:</span>
-                                <span>${escapeHtml(caseInfo.case_source || '-')}</span>
+                                <span>${escapeHtml(caseInfo.case_source || item.case_source || '-')}</span>
                             </div>
                             <div class="flex justify-between">
-                                <span class="text-gray-500">案由:</span>
-                                <span class="font-medium text-purple-700">${escapeHtml(item.case_reason || caseInfo.case_reason || item.reason || '-')}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-500">收件时间:</span>
-                                <span>${formatDateTime(item.receive_at)}</span>
+                                <span class="text-gray-500">立案日期:</span>
+                                <span>${formatDate(item.handle_at || item.handle_date || item.filing_date || item.create_time)}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">仲裁员:</span>
-                                <span class="font-medium text-green-700">${escapeHtml(group.arbitrator || '-')}</span>
+                                <span class="font-medium text-purple-700">${escapeHtml(item.arbitrator || caseInfo.arbitrator || '-')}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">书记员:</span>
-                                <span>${escapeHtml(group.clerk || '-')}</span>
+                                <span>${escapeHtml(item.clerk || caseInfo.clerk || '-')}</span>
                             </div>
-                            ${item.review_opinion ? `
-                            <div class="mt-2 pt-2 border-t">
-                                <span class="text-gray-500">审核意见:</span>
-                                <p class="mt-1 text-green-700">${escapeHtml(item.review_opinion)}</p>
-                                <p class="text-xs text-gray-400 mt-1">${formatDateTime(item.review_at)}</p>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">案由:</span>
+                                <span>${escapeHtml(caseReason || item.case_reason || caseInfo.case_reason || caseInfo.case_type || '-')}</span>
                             </div>
-                            ` : ''}
-                            ${item.approval_opinion ? `
-                            <div class="mt-2 pt-2 border-t">
-                                <span class="text-gray-500">审批意见:</span>
-                                <p class="mt-1 text-blue-700">${escapeHtml(item.approval_opinion)}</p>
-                                <p class="text-xs text-gray-400 mt-1">${formatDateTime(item.approval_at)}</p>
-                            </div>
-                            ` : ''}
                         </div>
                     </div>
                 </div>
             `;
         }
 
-        // 查看详情 - 跳转到新页面
+        // 查看详情 - 跳转到立案详情页面
         function viewDetail(id) {
-            window.open(`/receive_detail?id=${id}`, '_blank');
+            if (id) {
+                window.open(`/handle_detail?id=${id}`, '_blank');
+            }
         }
 
         // 切换详情显示
@@ -688,22 +640,15 @@
 
         // 重置查询
         function resetQuery() {
-            document.getElementById('dateInput').value = '';
             document.getElementById('caseNoInput').value = '';
             document.getElementById('keywordInput').value = '';
-            
-            // 重置状态按钮
-            document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            document.getElementById('status-all').classList.add('active');
             
             currentParams = {};
             currentPage = 1;
             totalItems = 0;
             
             // 重新查询
-            queryReceiveData();
+            queryHandleData();
         }
 
         // 显示加载状态
@@ -778,7 +723,13 @@
         // 回车事件
         document.getElementById('caseNoInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                queryReceiveData();
+                queryHandleData();
+            }
+        });
+        
+        document.getElementById('keywordInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                queryHandleData();
             }
         });
 
@@ -852,11 +803,11 @@
             
             container.innerHTML = docTemplatesTree.map((item, index) => `
                 <div onclick="selectLevel1(${index})" 
-                    class="level1-item cursor-pointer px-3 py-2 rounded-lg hover:bg-green-50 transition mb-1 ${selectedLevel1 === index ? 'bg-green-100 border border-green-300' : ''}"
+                    class="level1-item cursor-pointer px-3 py-2 rounded-lg hover:bg-purple-50 transition mb-1 ${selectedLevel1 === index ? 'bg-purple-100 border border-purple-300' : ''}"
                     data-index="${index}">
                     <div class="flex items-center">
-                        <i class="fas fa-folder ${selectedLevel1 === index ? 'text-green-600' : 'text-yellow-500'} mr-2"></i>
-                        <span class="text-sm ${selectedLevel1 === index ? 'font-medium text-green-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
+                        <i class="fas fa-folder ${selectedLevel1 === index ? 'text-purple-600' : 'text-yellow-500'} mr-2"></i>
+                        <span class="text-sm ${selectedLevel1 === index ? 'font-medium text-purple-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
                     </div>
                 </div>
             `).join('');
@@ -897,11 +848,11 @@
                 
                 return `
                 <div onclick="selectLevel2(${index})" 
-                    class="level2-item cursor-pointer px-3 py-2 rounded-lg hover:bg-green-50 transition mb-1 ${isSelected ? 'bg-green-100 border border-green-300' : ''}"
+                    class="level2-item cursor-pointer px-3 py-2 rounded-lg hover:bg-purple-50 transition mb-1 ${isSelected ? 'bg-purple-100 border border-purple-300' : ''}"
                     data-index="${index}">
                     <div class="flex items-center">
-                        <i class="fas ${iconClass} ${isSelected ? 'text-green-600' : ''} mr-2"></i>
-                        <span class="text-sm ${isSelected ? 'font-medium text-green-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
+                        <i class="fas ${iconClass} ${isSelected ? 'text-purple-600' : ''} mr-2"></i>
+                        <span class="text-sm ${isSelected ? 'font-medium text-purple-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
                     </div>
                 </div>
             `;
@@ -962,11 +913,11 @@
                 
                 return `
                 <div onclick="selectLevel3(${index})" 
-                    class="level3-item cursor-pointer px-3 py-2 rounded-lg hover:bg-green-50 transition mb-1 ${isSelected ? 'bg-green-100 border border-green-300' : ''}"
+                    class="level3-item cursor-pointer px-3 py-2 rounded-lg hover:bg-purple-50 transition mb-1 ${isSelected ? 'bg-purple-100 border border-purple-300' : ''}"
                     data-index="${index}">
                     <div class="flex items-center">
-                        <i class="fas ${extIcon} ${isSelected ? 'text-green-600' : 'text-blue-500'} mr-2"></i>
-                        <span class="text-sm ${isSelected ? 'font-medium text-green-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
+                        <i class="fas ${extIcon} ${isSelected ? 'text-purple-600' : 'text-blue-500'} mr-2"></i>
+                        <span class="text-sm ${isSelected ? 'font-medium text-purple-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
                     </div>
                 </div>
             `;
@@ -1023,30 +974,79 @@
             parts.push(selectedFile.displayName);
             
             pathEl.textContent = parts.join(' > ');
-            pathEl.className = 'text-sm font-medium text-green-700';
+            pathEl.className = 'text-sm font-medium text-purple-700';
             confirmBtn.disabled = false;
         }
 
-        // 确认生成（下载文件）
-        function confirmGenerate() {
+        // 确认生成文书
+        async function confirmGenerate() {
             if (!selectedFile) {
-                alert('请先选择要下载的文书模板');
+                alert('请先选择要生成的文书模板');
                 return;
             }
             
-            // 构建下载URL
-            const downloadUrl = `${API_BASE_URL}/doc_templates/download?path=${encodeURIComponent(selectedFile.path)}`;
+            // 使用当前行的案件ID（点击生成按钮时自动设置）
+            const caseId = currentCaseId;
             
-            // 创建临时链接并点击下载
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.download = selectedFile.name;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            if (!caseId) {
+                alert('未获取到案件ID，请重新打开弹窗');
+                return;
+            }
             
-            // 关闭弹窗
-            closeGenerateModal();
+            // 显示生成中状态
+            const btn = document.getElementById('confirmGenerateBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>生成中...';
+            btn.disabled = true;
+            
+            try {
+                // 调用生成API
+                const response = await fetch(`${API_BASE_URL}/doc_templates/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        template_path: selectedFile.path,
+                        case_id: caseId
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || `生成失败: ${response.status}`);
+                }
+                
+                // 获取文件名
+                const disposition = response.headers.get('content-disposition');
+                let filename = selectedFile.name;
+                if (disposition && disposition.includes('filename=')) {
+                    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    if (match) filename = match[1].replace(/['"]/g, '');
+                }
+                
+                // 下载文件
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                
+                // 关闭弹窗
+                closeGenerateModal();
+                
+            } catch (error) {
+                console.error('生成文档失败:', error);
+                alert('生成文档失败: ' + error.message);
+            } finally {
+                // 恢复按钮状态
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
 
         // 点击弹窗外部关闭

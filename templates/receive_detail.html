@@ -159,6 +159,12 @@
                             <span class="info-value" id="basic_involve_number">-</span>
                         </div>
                     </div>
+                    <!-- 更多案件信息 -->
+                    <div id="extraCaseInfo" class="mt-4 pt-4 border-t border-gray-200 hidden">
+                        <div class="text-sm font-medium text-gray-700 mb-2">更多信息:</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm" id="extraCaseInfoContent">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -209,6 +215,18 @@
                     <div id="factReasonContent" class="space-y-4">
                         <!-- 动态填充 -->
                     </div>
+                </div>
+            </div>
+
+            <!-- 证据列表 -->
+            <div class="info-card" id="evidenceSection">
+                <div class="info-card-header bg-gradient-to-r from-teal-50 to-teal-100 !border-teal-500">
+                    <h2 class="section-title text-lg text-teal-700">
+                        <i class="fas fa-folder-open"></i> 证据列表
+                    </h2>
+                </div>
+                <div id="evidenceList" class="p-4 space-y-3">
+                    <!-- 动态填充 -->
                 </div>
             </div>
 
@@ -324,6 +342,9 @@
             // 事实与理由
             renderFactReason(item.case_fact_reason);
 
+            // 证据列表
+            renderEvidence(item.case_evidence_material || []);
+
             // 仲裁组信息
             renderGroup(item.groups);
 
@@ -350,6 +371,52 @@
             document.getElementById('basic_case_reason').textContent = caseInfo.case_reason || '-';
             document.getElementById('basic_applicant_type').textContent = caseInfo.applicant_type || '-';
             document.getElementById('basic_involve_number').textContent = caseInfo.involve_number || '-';
+            
+            // 显示更多案件信息
+            const extraInfo = [];
+            
+            if (caseInfo.apply_at) {
+                extraInfo.push({label: '提交日期', value: formatDate(caseInfo.apply_at)});
+            }
+            if (caseInfo.is_team !== undefined && caseInfo.is_team !== null) {
+                extraInfo.push({label: '是否集体', value: caseInfo.is_team ? '是' : '否'});
+            }
+            if (caseInfo.is_sign_labor_contract !== undefined && caseInfo.is_sign_labor_contract !== null) {
+                extraInfo.push({label: '签订劳动合同', value: caseInfo.is_sign_labor_contract ? '是' : '否'});
+            }
+            if (caseInfo.is_involve_labor_dispatch !== undefined && caseInfo.is_involve_labor_dispatch !== null) {
+                extraInfo.push({label: '涉及劳务派遣', value: caseInfo.is_involve_labor_dispatch ? '是' : '否'});
+            }
+            if (caseInfo.level !== undefined && caseInfo.level !== null) {
+                const levelMap = {'0': '一审', '1': '二审', '2': '再审'};
+                extraInfo.push({label: '案件级别', value: levelMap[caseInfo.level] || caseInfo.level});
+            }
+            if (caseInfo.arb_type) {
+                const arbTypeMap = {'1': '普通', '2': '简易', '3': '特殊'};
+                extraInfo.push({label: '仲裁类型', value: arbTypeMap[caseInfo.arb_type] || caseInfo.arb_type});
+            }
+            if (caseInfo.med_org_name) {
+                extraInfo.push({label: '调解组织', value: caseInfo.med_org_name});
+            }
+            if (caseInfo.star) {
+                extraInfo.push({label: '重点案件', value: '☆'.repeat(caseInfo.star)});
+            }
+            if (caseInfo.position && caseInfo.position.length > 0) {
+                const posNames = caseInfo.position.map(p => p.name).join(' > ');
+                extraInfo.push({label: '区域位置', value: posNames});
+            }
+            
+            if (extraInfo.length > 0) {
+                const extraContainer = document.getElementById('extraCaseInfo');
+                const extraContent = document.getElementById('extraCaseInfoContent');
+                extraContainer.classList.remove('hidden');
+                extraContent.innerHTML = extraInfo.map(info => `
+                    <div class="info-row !p-2 !border-b-0">
+                        <span class="info-label">${info.label}:</span>
+                        <span class="info-value">${info.value}</span>
+                    </div>
+                `).join('');
+            }
         }
 
         // 渲染申请人信息
@@ -363,13 +430,48 @@
 
             document.getElementById('applicantSection').classList.remove('hidden');
             
-            container.innerHTML = applicants.map((app, index) => `
+            container.innerHTML = applicants.map((app, index) => {
+                // 渲染代理人信息
+                let agentsHtml = '';
+                if (app.agents && app.agents.length > 0) {
+                    agentsHtml = `
+                        <div class="mt-4 pt-4 border-t border-green-100">
+                            <div class="text-sm font-medium text-green-700 mb-2">委托代理人:</div>
+                            ${app.agents.map(agent => `
+                                <div class="bg-green-50 rounded-lg p-3 mb-2">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="font-medium">${escapeHtml(agent.name)}</span>
+                                        ${agent.law_firm_name ? `<span class="text-xs text-gray-500">(${escapeHtml(agent.law_firm_name)})</span>` : ''}
+                                        ${agent.agent_auth ? `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">${escapeHtml(agent.agent_auth)}</span>` : ''}
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                        ${agent.id_number ? `
+                                            <div><span class="text-gray-500">身份证号:</span> <span class="font-mono">${escapeHtml(agent.id_number)}</span></div>
+                                        ` : ''}
+                                        ${agent.mobile ? `
+                                            <div><span class="text-gray-500">联系电话:</span> ${escapeHtml(agent.mobile)}</div>
+                                        ` : ''}
+                                        ${agent.lawyer_card_number ? `
+                                            <div><span class="text-gray-500">律师证号:</span> ${escapeHtml(agent.lawyer_card_number)}</div>
+                                        ` : ''}
+                                        ${agent.receive_address ? `
+                                            <div class="md:col-span-2"><span class="text-gray-500">收件地址:</span> ${escapeHtml(agent.receive_address)}</div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+                
+                return `
                 <div class="p-4 ${index > 0 ? 'border-t border-gray-100' : ''}">
                     <div class="flex items-center gap-2 mb-3">
                         <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
                             申请人 ${index + 1}
                         </span>
                         <span class="font-bold text-lg">${escapeHtml(app.name)}</span>
+                        ${app.is_migrant_worker ? '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">农民工</span>' : ''}
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
                         <div class="flex">
@@ -402,9 +504,33 @@
                             <span class="font-medium">${escapeHtml(app.address)}</span>
                         </div>
                         ` : ''}
+                        ${app.receive_address ? `
+                        <div class="flex md:col-span-3">
+                            <span class="text-gray-500 w-20">收件地址:</span>
+                            <span class="font-medium">${escapeHtml(app.receive_address)}</span>
+                        </div>
+                        ` : ''}
+                        ${app.card_image_front ? `
+                        <div class="flex md:col-span-3">
+                            <span class="text-gray-500 w-20">身份证正面:</span>
+                            <a href="${escapeHtml(app.card_image_front)}" target="_blank" class="text-green-600 hover:text-green-800">
+                                <i class="fas fa-image mr-1"></i>查看图片
+                            </a>
+                        </div>
+                        ` : ''}
+                        ${app.card_image_reverse ? `
+                        <div class="flex md:col-span-3">
+                            <span class="text-gray-500 w-20">身份证反面:</span>
+                            <a href="${escapeHtml(app.card_image_reverse)}" target="_blank" class="text-green-600 hover:text-green-800">
+                                <i class="fas fa-image mr-1"></i>查看图片
+                            </a>
+                        </div>
+                        ` : ''}
                     </div>
+                    ${agentsHtml}
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         // 渲染被申请人信息
@@ -451,7 +577,62 @@
                             <span class="text-gray-500 w-28">注册地址:</span>
                             <span class="font-medium">${escapeHtml(resp.company_address)}</span>
                         </div>
+                        ${resp.address ? `
+                        <div class="flex md:col-span-2">
+                            <span class="text-gray-500 w-28">办公地址:</span>
+                            <span class="font-medium">${escapeHtml(resp.address)}</span>
+                        </div>
+                        ` : ''}
+                        ${resp.receive_address ? `
+                        <div class="flex md:col-span-2">
+                            <span class="text-gray-500 w-28">收件地址:</span>
+                            <span class="font-medium">${escapeHtml(resp.receive_address)}</span>
+                        </div>
+                        ` : ''}
+                        ${resp.industry ? `
+                        <div class="flex">
+                            <span class="text-gray-500 w-28">所属行业:</span>
+                            <span class="font-medium">${escapeHtml(resp.industry)}</span>
+                        </div>
+                        ` : ''}
+                        ${resp.business_scope ? `
+                        <div class="flex md:col-span-2">
+                            <span class="text-gray-500 w-28">营业范围:</span>
+                            <span class="font-medium">${escapeHtml(resp.business_scope)}</span>
+                        </div>
+                        ` : ''}
                     </div>
+                    
+                    <!-- 被申请人代理人 -->
+                    ${resp.agents && resp.agents.length > 0 ? `
+                    <div class="mt-4 pt-4 border-t border-blue-100">
+                        <div class="text-sm font-medium text-blue-700 mb-2">委托代理人:</div>
+                        ${resp.agents.map(agent => `
+                            <div class="bg-blue-50 rounded-lg p-3 mb-2">
+                                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span class="font-medium">${escapeHtml(agent.name)}</span>
+                                    ${agent.law_firm_name ? `<span class="text-xs text-gray-500">(${escapeHtml(agent.law_firm_name)})</span>` : ''}
+                                    ${agent.agent_auth ? `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">${escapeHtml(agent.agent_auth)}</span>` : ''}
+                                    ${agent.is_legal_aid ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">法律援助</span>' : ''}
+                                    ${agent.is_mediator ? '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">调解员</span>' : ''}
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                    ${agent.sex ? `<div><span class="text-gray-500">性别:</span> ${escapeHtml(agent.sex)}</div>` : ''}
+                                    ${agent.birth ? `<div><span class="text-gray-500">出生日期:</span> ${escapeHtml(agent.birth)}</div>` : ''}
+                                    ${agent.nation ? `<div><span class="text-gray-500">民族:</span> ${escapeHtml(agent.nation)}</div>` : ''}
+                                    ${agent.job ? `<div><span class="text-gray-500">职业:</span> ${escapeHtml(agent.job)}</div>` : ''}
+                                    ${agent.id_number ? `<div><span class="text-gray-500">身份证号:</span> <span class="font-mono">${escapeHtml(agent.id_number)}</span></div>` : ''}
+                                    ${agent.mobile ? `<div><span class="text-gray-500">联系电话:</span> ${escapeHtml(agent.mobile)}</div>` : ''}
+                                    ${agent.lawyer_card_number ? `<div><span class="text-gray-500">律师证号:</span> ${escapeHtml(agent.lawyer_card_number)}</div>` : ''}
+                                    ${agent.registered_permanent_residence ? `<div class="md:col-span-2"><span class="text-gray-500">户籍地址:</span> ${escapeHtml(agent.registered_permanent_residence)}</div>` : ''}
+                                    ${agent.address ? `<div class="md:col-span-2"><span class="text-gray-500">居住地址:</span> ${escapeHtml(agent.address)}</div>` : ''}
+                                    ${agent.receive_address ? `<div class="md:col-span-2"><span class="text-gray-500">收件地址:</span> ${escapeHtml(agent.receive_address)}</div>` : ''}
+                                    ${agent.relation ? `<div><span class="text-gray-500">与当事人关系:</span> ${escapeHtml(agent.relation)}</div>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    ` : ''}
                 </div>
             `).join('');
         }
@@ -492,12 +673,46 @@
                         </div>
                         <div>
                             <span class="text-gray-500 text-sm">标的金额:</span>
-                            <span class="font-medium text-red-600 ml-2">${escapeHtml(req.object)} 元</span>
+                            <span class="font-medium text-red-600 ml-2">${formatMoney(req.object)}</span>
                         </div>
                         <div>
                             <span class="text-gray-500 text-sm">请求内容:</span>
                             <p class="mt-1 text-gray-800 bg-white p-3 rounded border border-gray-200">${escapeHtml(req.intro)}</p>
                         </div>
+                        ${req.opt && req.opt.length > 0 ? `
+                        <div>
+                            <span class="text-gray-500 text-sm">选项信息:</span>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                                ${req.opt.flat().map(opt => `
+                                    <span class="bg-white border border-purple-200 text-purple-700 text-xs px-2 py-1 rounded">${escapeHtml(opt)}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${req.level4_arr && req.level4_arr.length > 0 ? `
+                        <div>
+                            <span class="text-gray-500 text-sm">明细金额:</span>
+                            <div class="mt-1 space-y-1">
+                                ${req.level4_arr.map(item => `
+                                    <div class="flex justify-between bg-white p-2 rounded border border-purple-200 text-sm">
+                                        <span>${escapeHtml(item.name)}</span>
+                                        <span class="font-medium text-red-600">${formatMoney(item.object)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${req.end_money ? `
+                        <div>
+                            <span class="text-gray-500 text-sm">终局金额:</span>
+                            <span class="font-medium text-red-600 ml-2">${formatMoney(req.end_money)}</span>
+                        </div>
+                        ` : ''}
+                        ${req.is_reverse ? `
+                        <div>
+                            <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">反请求</span>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             `).join('');
@@ -529,6 +744,10 @@
                         <span class="font-medium">${escapeHtml(factReason.actual_workplace)}</span>
                     </div>
                     <div class="flex">
+                        <span class="text-gray-500 w-28">工资标准:</span>
+                        <span class="font-medium">${factReason.salary ? escapeHtml(factReason.salary) + ' 元' : '-'}</span>
+                    </div>
+                    <div class="flex">
                         <span class="text-gray-500 w-28">签订劳动合同:</span>
                         <span class="font-medium">${factReason.is_sign_labor_contract ? '是' : '否'}</span>
                     </div>
@@ -556,6 +775,77 @@
             `;
         }
 
+        // 渲染证据列表
+        function renderEvidence(evidenceList) {
+            const container = document.getElementById('evidenceList');
+            
+            if (!evidenceList || evidenceList.length === 0) {
+                document.getElementById('evidenceSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('evidenceSection').classList.remove('hidden');
+            
+            // 文件代理基础URL
+            const FILE_PROXY_BASE = '/api/file/proxy';
+            
+            container.innerHTML = evidenceList.map((evi, index) => {
+                // 处理 file_path 可能是 JSON 字符串的情况
+                let fileLinks = '';
+                if (evi.file_path) {
+                    try {
+                        const fileData = typeof evi.file_path === 'string' ? JSON.parse(evi.file_path) : evi.file_path;
+                        if (Array.isArray(fileData) && fileData.length > 0) {
+                            fileLinks = fileData.map(f => {
+                                const originalUrl = f.url || f;
+                                const proxyUrl = `${FILE_PROXY_BASE}?url=${encodeURIComponent(originalUrl)}`;
+                                return `
+                                    <a href="${proxyUrl}" target="_blank" class="text-sm text-green-600 hover:text-green-800 mt-1 inline-block mr-3" title="${escapeHtml(originalUrl)}">
+                                        <i class="fas fa-file-pdf mr-1"></i>${escapeHtml(f.name || f.filename || '查看文件')}
+                                    </a>
+                                `;
+                            }).join('');
+                        }
+                    } catch (e) {
+                        if (evi.file_path.startsWith('http')) {
+                            const proxyUrl = `${FILE_PROXY_BASE}?url=${encodeURIComponent(evi.file_path)}`;
+                            fileLinks = `<a href="${proxyUrl}" target="_blank" class="text-sm text-green-600 hover:text-green-800 mt-1 inline-block"><i class="fas fa-file mr-1"></i>查看文件</a>`;
+                        }
+                    }
+                }
+                
+                const purpose = evi.object || evi.purpose || evi.prove || evi.description || evi.desc || '';
+                
+                return `
+                <div class="evidence-item p-4 rounded-lg border-l-4 border-green-500 bg-green-50">
+                    <div class="flex items-start gap-3">
+                        <span class="bg-teal-100 text-teal-800 text-xs font-medium px-2 py-1 rounded flex-shrink-0">
+                            证据 ${index + 1}
+                        </span>
+                        <div class="flex-1">
+                            <div class="font-medium text-gray-900 mb-1">${escapeHtml(evi.name || evi.evidence_name || evi.title || evi.material_name)}</div>
+                            ${evi.type || evi.material_type ? `
+                                <div class="text-xs text-gray-500 mb-1">类型: ${escapeHtml(evi.type)}${evi.material_type ? ' / ' + escapeHtml(evi.material_type) : ''}</div>
+                            ` : ''}
+                            ${purpose ? `
+                                <div class="text-sm text-gray-600 mb-2">
+                                    <span class="text-gray-500">证明目的:</span> ${escapeHtml(purpose)}
+                                </div>
+                            ` : ''}
+                            ${evi.page_number || evi.pages ? `
+                                <div class="text-xs text-gray-500 mb-1">页码: ${escapeHtml(evi.page_number)}${evi.pages ? ' (共' + evi.pages + '页)' : ''}</div>
+                            ` : ''}
+                            ${evi.submitter ? `
+                                <div class="text-xs text-gray-500 mb-1">提交人: ${escapeHtml(evi.submitter)}</div>
+                            ` : ''}
+                            ${fileLinks ? `<div class="mt-2">${fileLinks}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
         // 渲染仲裁组信息
         function renderGroup(group) {
             const container = document.getElementById('groupContent');
@@ -571,10 +861,12 @@
                 <div class="info-row !p-2 !border-b-0">
                     <span class="info-label">仲裁员:</span>
                     <span class="info-value text-green-700 font-bold">${escapeHtml(group.arbitrator)}</span>
+                    ${group.arbitrator_id ? `<span class="text-xs text-gray-400 ml-2">(ID: ${group.arbitrator_id})</span>` : ''}
                 </div>
                 <div class="info-row !p-2 !border-b-0">
                     <span class="info-label">书记员:</span>
                     <span class="info-value">${escapeHtml(group.clerk)}</span>
+                    ${group.clerk_id ? `<span class="text-xs text-gray-400 ml-2">(ID: ${group.clerk_id})</span>` : ''}
                 </div>
                 <div class="info-row !p-2 !border-b-0">
                     <span class="info-label">办案类型:</span>
@@ -584,20 +876,141 @@
                 <div class="info-row !p-2 !border-b-0">
                     <span class="info-label">承办仲裁员:</span>
                     <span class="info-value">${escapeHtml(group.undertake_arbitrator)}</span>
+                    ${group.undertake_arbitrator_id ? `<span class="text-xs text-gray-400 ml-2">(ID: ${group.undertake_arbitrator_id})</span>` : ''}
                 </div>
                 ` : ''}
                 ${group.bench_arbitrator_1 ? `
                 <div class="info-row !p-2 !border-b-0">
                     <span class="info-label">合议仲裁员1:</span>
                     <span class="info-value">${escapeHtml(group.bench_arbitrator_1)}</span>
+                    ${group.bench_arbitrator_id_1 ? `<span class="text-xs text-gray-400 ml-2">(ID: ${group.bench_arbitrator_id_1})</span>` : ''}
                 </div>
                 ` : ''}
                 ${group.bench_arbitrator_2 ? `
                 <div class="info-row !p-2 !border-b-0">
                     <span class="info-label">合议仲裁员2:</span>
                     <span class="info-value">${escapeHtml(group.bench_arbitrator_2)}</span>
+                    ${group.bench_arbitrator_id_2 ? `<span class="text-xs text-gray-400 ml-2">(ID: ${group.bench_arbitrator_id_2})</span>` : ''}
                 </div>
                 ` : ''}
+                ${group.is_expedited ? `
+                <div class="info-row !p-2 !border-b-0">
+                    <span class="info-label">简易程序:</span>
+                    <span class="info-value text-orange-600">是</span>
+                </div>
+                ` : ''}
+            `;
+        }
+
+        // 渲染第三人信息
+        function renderThirdpartys(thirdpartys) {
+            // 在被申请人信息后面添加第三人信息
+            const respondentSection = document.getElementById('respondentSection');
+            
+            let tpSection = document.getElementById('thirdpartySection');
+            if (!tpSection) {
+                tpSection = document.createElement('div');
+                tpSection.id = 'thirdpartySection';
+                tpSection.className = 'info-card mt-6';
+                respondentSection.parentNode.insertBefore(tpSection, respondentSection.nextSibling);
+            }
+            
+            tpSection.innerHTML = `
+                <div class="info-card-header bg-gradient-to-r from-yellow-50 to-yellow-100 !border-yellow-500">
+                    <h2 class="section-title text-lg text-yellow-700">
+                        <i class="fas fa-user-friends"></i> 第三人信息
+                    </h2>
+                </div>
+                <div class="divide-y divide-gray-100">
+                    ${thirdpartys.map((tp, index) => `
+                        <div class="p-4 ${index > 0 ? 'border-t border-gray-100' : ''}">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                                    第三人 ${index + 1}
+                                </span>
+                                <span class="font-bold text-lg">${escapeHtml(tp.name)}</span>
+                                ${tp.type ? `<span class="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded">${escapeHtml(tp.type)}</span>` : ''}
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                ${tp.social_code ? `
+                                <div class="flex md:col-span-2">
+                                    <span class="text-gray-500 w-28">统一社会信用代码:</span>
+                                    <span class="font-medium font-mono">${escapeHtml(tp.social_code)}</span>
+                                </div>
+                                ` : ''}
+                                ${tp.legal_name ? `
+                                <div class="flex">
+                                    <span class="text-gray-500 w-28">法定代表人:</span>
+                                    <span class="font-medium">${escapeHtml(tp.legal_name)}</span>
+                                </div>
+                                ` : ''}
+                                ${tp.mobile ? `
+                                <div class="flex">
+                                    <span class="text-gray-500 w-28">联系电话:</span>
+                                    <span class="font-medium">${escapeHtml(tp.mobile)}</span>
+                                </div>
+                                ` : ''}
+                                ${tp.address ? `
+                                <div class="flex md:col-span-2">
+                                    <span class="text-gray-500 w-28">地址:</span>
+                                    <span class="font-medium">${escapeHtml(tp.address)}</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // 渲染系统字段信息
+        function renderSystemInfo(item) {
+            const detailContent = document.getElementById('detailContent');
+            
+            let sysSection = document.getElementById('systemInfoSection');
+            if (!sysSection) {
+                sysSection = document.createElement('div');
+                sysSection.id = 'systemInfoSection';
+                sysSection.className = 'info-card';
+                detailContent.appendChild(sysSection);
+            }
+            
+            const sysInfo = [];
+            if (item.id) sysInfo.push({label: '记录ID', value: item.id});
+            if (item.arb_org_id) sysInfo.push({label: '仲裁机构ID', value: item.arb_org_id});
+            if (item.operator_id) sysInfo.push({label: '操作员ID', value: item.operator_id});
+            if (item.adder) sysInfo.push({label: '录入员ID', value: item.adder});
+            if (item.source_id !== undefined && item.source_id !== null) sysInfo.push({label: '来源ID', value: item.source_id});
+            if (item.old_case_id !== undefined && item.old_case_id !== null) sysInfo.push({label: '原案件ID', value: item.old_case_id});
+            if (item.next_step !== undefined && item.next_step !== null) sysInfo.push({label: '下一步骤', value: item.next_step});
+            if (item.is_notify !== undefined && item.is_notify !== null) sysInfo.push({label: '是否通知', value: item.is_notify ? '是' : '否'});
+            if (item.additional_num !== undefined && item.additional_num !== null) sysInfo.push({label: '补正次数', value: item.additional_num});
+            if (item.trial_days !== undefined && item.trial_days !== null) sysInfo.push({label: '审理天数', value: item.trial_days});
+            if (item.created_at) sysInfo.push({label: '创建时间', value: formatDateTime(item.created_at)});
+            if (item.updated_at) sysInfo.push({label: '更新时间', value: formatDateTime(item.updated_at)});
+            
+            if (sysInfo.length === 0) {
+                sysSection.classList.add('hidden');
+                return;
+            }
+            
+            sysSection.classList.remove('hidden');
+            sysSection.innerHTML = `
+                <div class="info-card-header bg-gradient-to-r from-gray-100 to-gray-200 !border-gray-400">
+                    <h2 class="section-title text-lg text-gray-700">
+                        <i class="fas fa-cog"></i> 系统信息
+                    </h2>
+                </div>
+                <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${sysInfo.map(info => `
+                            <div class="info-row !p-2 !border-b-0">
+                                <span class="info-label">${info.label}:</span>
+                                <span class="info-value font-mono text-xs">${escapeHtml(String(info.value))}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             `;
         }
 
@@ -608,41 +1021,109 @@
             let html = '';
             
             // 审核信息
-            if (item.review_opinion) {
+            if (item.review_opinion || item.review_user_id) {
                 html += `
                     <div class="bg-green-50 rounded-lg p-4 border border-green-200">
                         <h3 class="font-bold text-green-800 mb-3">
                             <i class="fas fa-user-check mr-2"></i>审核信息
                         </h3>
                         <div class="space-y-2 text-sm">
+                            ${item.review_opinion ? `
                             <div class="flex">
                                 <span class="text-gray-500 w-20">审核意见:</span>
                                 <span class="font-medium text-green-700">${escapeHtml(item.review_opinion)}</span>
                             </div>
+                            ` : ''}
+                            ${item.review_at ? `
                             <div class="flex">
                                 <span class="text-gray-500 w-20">审核时间:</span>
                                 <span class="font-medium">${formatDateTime(item.review_at)}</span>
                             </div>
+                            ` : ''}
+                            ${item.review_user_id ? `
+                            <div class="flex">
+                                <span class="text-gray-500 w-20">审核人ID:</span>
+                                <span class="font-medium font-mono text-xs">${escapeHtml(String(item.review_user_id))}</span>
+                            </div>
+                            ` : ''}
                         </div>
                     </div>
                 `;
             }
             
             // 审批信息
-            if (item.approval_opinion) {
+            if (item.approval_opinion || item.approval_user_id) {
                 html += `
                     <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
                         <h3 class="font-bold text-blue-800 mb-3">
                             <i class="fas fa-user-tie mr-2"></i>审批信息
                         </h3>
                         <div class="space-y-2 text-sm">
+                            ${item.approval_opinion ? `
                             <div class="flex">
                                 <span class="text-gray-500 w-20">审批意见:</span>
                                 <span class="font-medium text-blue-700">${escapeHtml(item.approval_opinion)}</span>
                             </div>
+                            ` : ''}
+                            ${item.approval_at ? `
                             <div class="flex">
                                 <span class="text-gray-500 w-20">审批时间:</span>
                                 <span class="font-medium">${formatDateTime(item.approval_at)}</span>
+                            </div>
+                            ` : ''}
+                            ${item.approval_user_id ? `
+                            <div class="flex">
+                                <span class="text-gray-500 w-20">审批人ID:</span>
+                                <span class="font-medium font-mono text-xs">${escapeHtml(String(item.approval_user_id))}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 不予受理原因
+            if (item.no_accept_reason || item.refuse_reason) {
+                html += `
+                    <div class="bg-red-50 rounded-lg p-4 border border-red-200 md:col-span-2">
+                        <h3 class="font-bold text-red-800 mb-3">
+                            <i class="fas fa-ban mr-2"></i>不予受理信息
+                        </h3>
+                        <div class="space-y-2 text-sm">
+                            ${item.no_accept_reason ? `
+                            <div class="flex">
+                                <span class="text-gray-500 w-20">不予受理:</span>
+                                <span class="font-medium text-red-700">${escapeHtml(item.no_accept_reason)}</span>
+                            </div>
+                            ` : ''}
+                            ${item.refuse_reason ? `
+                            <div class="flex">
+                                <span class="text-gray-500 w-20">驳回原因:</span>
+                                <span class="font-medium text-red-700">${escapeHtml(item.refuse_reason)}</span>
+                            </div>
+                            ` : ''}
+                            ${item.other_reason ? `
+                            <div class="flex">
+                                <span class="text-gray-500 w-20">其他原因:</span>
+                                <span class="font-medium">${escapeHtml(item.other_reason)}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 撤回原因
+            if (item.reason) {
+                html += `
+                    <div class="bg-orange-50 rounded-lg p-4 border border-orange-200 md:col-span-2">
+                        <h3 class="font-bold text-orange-800 mb-3">
+                            <i class="fas fa-undo mr-2"></i>撤回信息
+                        </h3>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex">
+                                <span class="text-gray-500 w-20">撤回原因:</span>
+                                <span class="font-medium text-orange-700">${escapeHtml(item.reason)}</span>
                             </div>
                         </div>
                     </div>
@@ -712,6 +1193,14 @@
             const minute = String(date.getMinutes()).padStart(2, '0');
             
             return `${year}-${month}-${day} ${hour}:${minute}`;
+        }
+
+        // 格式化金额
+        function formatMoney(money) {
+            if (!money || money === '-' || money === '') return '-';
+            const num = parseFloat(money);
+            if (isNaN(num)) return money;
+            return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' 元';
         }
     </script>
 </body>

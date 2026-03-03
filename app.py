@@ -22,6 +22,7 @@ from datetime import datetime
 import pymysql
 import json
 import requests
+import re
 
 # 导入原有模块
 from config import Config
@@ -75,6 +76,30 @@ def receive_query_page():
 def receive_detail_page():
     """收件详情页面"""
     return render_template('receive_detail.html')
+
+
+@app.route('/handle_query')
+def handle_query_page():
+    """立案查询页面"""
+    return render_template('handle_query.html')
+
+
+@app.route('/handle_detail')
+def handle_detail_page():
+    """立案详情页面"""
+    return render_template('handle_detail.html')
+
+
+@app.route('/reserve_query')
+def reserve_query_page():
+    """预约仲裁申请查询页面"""
+    return render_template('reserve_query.html')
+
+
+@app.route('/reserve_detail')
+def reserve_detail_page():
+    """预约仲裁申请详情页面"""
+    return render_template('reserve_detail.html')
 
 
 # ============================================
@@ -851,6 +876,7 @@ def query_receive():
     - application_date: 申请日期（格式：YYYY-MM-DD）
     - status: 状态（0-收件登记, 1-审核通过, 2-审核不通过, 3-审批通过, 4-审批不通过, 5-提交）
     - case_no: 案件编号（用户输入202691，实际传参[2026]91）
+    - search: 关键字（搜索申请人/被申请人/案由）
     """
     try:
         # 获取查询参数
@@ -859,10 +885,11 @@ def query_receive():
         application_date = request.args.get('application_date')
         status = request.args.get('status')
         case_no = request.args.get('case_no')
+        search = request.args.get('search')
         
-        # 构建内部API请求参数（内部API使用从0开始的页码）
+        # 构建内部API请求参数（内部API使用从1开始的页码）
         params = {
-            'page': page - 1,  # 转换为从0开始的页码
+            'page': page,  # 内部API使用从1开始的页码
             'page_size': page_size
         }
         
@@ -872,6 +899,10 @@ def query_receive():
         if status:
             params['status'] = status
             logger.info(f"状态筛选: {status}")
+        
+        if search:
+            params['search'] = search.strip()
+            logger.info(f"关键字筛选: {search}")
             
         if case_no:
             # 支持多种输入格式，统一转换为 [2026]91 格式
@@ -932,6 +963,41 @@ def query_receive():
         # 返回结果
         if response.status_code == 200:
             data = response.json()
+            
+            # 处理数据：将案由平铺到 item 级别 + 内存分页
+            # 数据结构: {code:200, data:{code:200, data:{data:[...], totalNum:...}}}
+            try:
+                outer_data = data.get('data', {})
+                if isinstance(outer_data, dict):
+                    inner_data = outer_data.get('data', {})
+                    if isinstance(inner_data, dict):
+                        items = inner_data.get('data', [])
+                        if isinstance(items, list):
+                            # 保存总条数
+                            total_count = len(items)
+                            # 内存分页
+                            offset = (page - 1) * page_size
+                            paginated_items = items[offset:offset + page_size]
+                            # 更新数据
+                            inner_data['data'] = paginated_items
+                            inner_data['totalNum'] = total_count
+                            # 更新案由
+                            logger.info(f"处理案由: {len(paginated_items)}条数据")
+                            for item in paginated_items:
+                                if isinstance(item, dict):
+                                    cases = item.get('cases', {})
+                                    if cases and isinstance(cases, dict):
+                                        case_reason = cases.get('case_reason')
+                                        if case_reason:
+                                            logger.info(f"  找到案由: {case_reason[:20]}")
+                                            if not item.get('case_reason'):
+                                                item['case_reason'] = case_reason
+                                                logger.info(f"  已设置案由")
+                                        else:
+                                            logger.info(f"  无案由")
+            except Exception as e:
+                logger.warning(f"处理数据时出错: {e}")
+            
             return jsonify({
                 'code': 200,
                 'message': '查询成功',
@@ -1028,6 +1094,19 @@ def query_receive_detail():
         # 返回结果
         if response.status_code == 200:
             data = response.json()
+            
+            # 处理数据：将案由平铺到 item 级别，方便前端显示
+            if data and isinstance(data, dict) and 'data' in data:
+                items = data['data']
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict):
+                            # 从 cases 中提取案由到 item 级别
+                            cases = item.get('cases', {})
+                            if cases and isinstance(cases, dict):
+                                if not item.get('case_reason') and cases.get('case_reason'):
+                                    item['case_reason'] = cases.get('case_reason')
+            
             return jsonify({
                 'code': 200,
                 'message': '查询成功',
@@ -1070,6 +1149,537 @@ def query_receive_detail():
 
 
 # ============================================
+# 预约仲裁申请查询API（代理内部服务）
+# ============================================
+
+RESERVE_API_BASE = "http://10.96.10.78:8080/v1/api/admin/arb/reserve"
+
+@app.route('/api/reserve/query', methods=['GET'])
+def query_reserve():
+    """
+    预约仲裁申请查询接口 - 代理调用内部服务
+    支持参数：
+    - type: 类型（默认1）
+    - page: 页码（默认1）
+    - page_size: 每页数量（默认10）
+    - status: 状态（0-待审核, 1-审核通过, 2-审核不通过, 3-现场确认同意, 4-现场确认不同意）
+    - applicant: 申请人姓名
+    - respondent: 被申请人名称
+    - submit_at: 申请日期（格式：YYYY-MM-DD）
+    """
+    try:
+        # 获取查询参数
+        type_val = request.args.get('type', '1')
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 10))
+        status = request.args.get('status')
+        applicant = request.args.get('applicant')
+        respondent = request.args.get('respondent')
+        submit_at = request.args.get('submit_at')
+        
+        # 构建内部API请求参数（内部API使用从1开始的页码）
+        params = {
+            'type': type_val,
+            'page': page,           # 内部API使用从1开始的页码
+            'page_size': page_size
+        }
+        
+        if status:
+            params['status'] = status
+            logger.info(f"状态筛选: {status}")
+        
+        if applicant:
+            params['applicant'] = applicant.strip()
+            logger.info(f"申请人筛选: {applicant}")
+            
+        if respondent:
+            params['respondent'] = respondent.strip()
+            logger.info(f"被申请人筛选: {respondent}")
+            
+        if submit_at:
+            params['submit_at'] = submit_at
+            logger.info(f"申请日期筛选: {submit_at}")
+        
+        # 检查并更新登录状态
+        if not login_manager.check_and_renew_login():
+            logger.error("获取有效登录信息失败")
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询预约仲裁申请信息',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 获取带认证信息的请求头
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            logger.error("获取认证请求头失败")
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        logger.info(f"预约仲裁申请查询请求: {RESERVE_API_BASE}")
+        logger.info(f"  参数: {params}")
+        
+        # 调用内部服务（带认证头）
+        response = requests.get(
+            RESERVE_API_BASE,
+            headers=headers,
+            params=params,
+            timeout=30
+        )
+        
+        # 返回结果
+        if response.status_code == 200:
+            data = response.json()
+            
+            # 调试：打印返回的数据ID列表
+            try:
+                # 数据结构: {code:200, data:{code:200, data:{data:[...], totalNum:...}}}
+                outer_data = data.get('data', {})
+                if isinstance(outer_data, dict):
+                    inner_data = outer_data.get('data', {})
+                    if isinstance(inner_data, dict):
+                        items = inner_data.get('data', [])
+                        total_num = inner_data.get('totalNum', 0)
+                        if isinstance(items, list) and len(items) > 0:
+                            ids = [item.get('id') for item in items[0:5]]
+                            case_nos = [item.get('case_no') for item in items[0:5]]
+                            logger.info(f"立案查询返回: page={page}, 数据条数={len(items)}, 总条数={total_num}, "
+                                       f"前5条ID={ids}, 前5条案号={case_nos}")
+            except Exception as e:
+                logger.warning(f"调试日志出错: {e}")
+            
+            # 处理数据：将案由平铺到 item 级别
+            # 数据结构: {code:200, data:{code:200, data:{data:[...], totalNum:...}}}
+            try:
+                outer_data = data.get('data', {})
+                if isinstance(outer_data, dict):
+                    inner_data = outer_data.get('data', {})
+                    if isinstance(inner_data, dict):
+                        items = inner_data.get('data', [])
+                        if isinstance(items, list):
+                            for item in items:
+                                if isinstance(item, dict):
+                                    cases = item.get('cases', {})
+                                    if cases and isinstance(cases, dict):
+                                        case_reason = cases.get('case_reason')
+                                        if case_reason and not item.get('case_reason'):
+                                            item['case_reason'] = case_reason
+            except Exception as e:
+                logger.warning(f"处理案由数据时出错: {e}")
+            
+            return jsonify({
+                'code': 200,
+                'message': '查询成功',
+                'data': data,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            logger.error(f"内部服务返回错误: {response.status_code}, {response.text}")
+            return jsonify({
+                'code': response.status_code,
+                'message': f'内部服务错误: {response.status_code}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        logger.error("预约仲裁申请查询超时")
+        return jsonify({
+            'code': 504,
+            'message': '请求内部服务超时',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"预约仲裁申请查询请求异常: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'请求内部服务失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"预约仲裁申请查询错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/reserve/detail', methods=['GET'])
+def query_reserve_detail():
+    """
+    预约仲裁申请详情查询接口 - 代理调用内部服务
+    参数:
+      - id: 预约申请记录ID（必填）
+    """
+    try:
+        # 获取查询参数
+        item_id = request.args.get('id')
+        
+        if not item_id:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: id',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # 检查并更新登录状态
+        if not login_manager.check_and_renew_login():
+            logger.error("获取有效登录信息失败")
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询详情',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 获取带认证信息的请求头
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            logger.error("获取认证请求头失败")
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 构建内部API URL: /v1/api/admin/arb/{id}/reserve
+        detail_url = f"{RESERVE_API_BASE.replace('/reserve', '')}/{item_id}/reserve"
+        
+        logger.info(f"预约仲裁申请详情查询请求: {detail_url}")
+        
+        # 调用内部服务（带认证头）
+        response = requests.get(
+            detail_url,
+            headers=headers,
+            timeout=30
+        )
+        
+        # 返回结果
+        if response.status_code == 200:
+            data = response.json()
+            return jsonify({
+                'code': 200,
+                'message': '查询成功',
+                'data': data,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            logger.error(f"内部服务返回错误: {response.status_code}, {response.text}")
+            return jsonify({
+                'code': response.status_code,
+                'message': f'内部服务错误: {response.status_code}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        logger.error("预约仲裁申请详情查询超时")
+        return jsonify({
+            'code': 504,
+            'message': '请求内部服务超时',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"预约仲裁申请详情查询请求异常: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'请求内部服务失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"预约仲裁申请详情查询错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+# ============================================
+# 立案查询API（代理内部服务）
+# ============================================
+
+HANDLE_API_BASE = "http://10.96.10.78:8080/v1/api/admin/arb/handle"
+
+@app.route('/api/handle/query', methods=['GET'])
+def query_handle():
+    """
+    立案查询接口 - 代理调用内部服务
+    支持参数：
+    - page: 页码（默认1）
+    - page_size: 每页数量（默认20）
+    - case_no: 案件编号（用户输入202691，实际传参[2026]91）
+    - search: 关键字（搜索申请人/被申请人/案由）
+    """
+    try:
+        # 获取查询参数
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 20))
+        case_no = request.args.get('case_no')
+        search = request.args.get('search')
+        
+        # 构建内部API请求参数（内部API使用从1开始的页码）
+        params = {
+            'page': page,  # 内部API使用从1开始的页码
+            'page_size': page_size
+        }
+        
+        if search:
+            params['search'] = search.strip()
+            logger.info(f"立案查询关键字筛选: {search}")
+            
+        if case_no:
+            # 支持多种输入格式，统一转换为 [2026]91 格式
+            original_case_no = case_no.strip()
+            converted_case_no = original_case_no
+            
+            # 提取方括号中的内容
+            import re
+            match = re.search(r'\[(\d{4})\](\d+)', original_case_no)
+            if match:
+                # 已经是 [2026]91 或包含这种格式
+                converted_case_no = f"[{match.group(1)}]{match.group(2)}"
+            elif original_case_no.isdigit() and len(original_case_no) >= 6:
+                # 纯数字格式 202691
+                year = original_case_no[:4]
+                num = original_case_no[4:]
+                converted_case_no = f"[{year}]{num}"
+            elif re.match(r'^\d{4}\]\d+$', original_case_no):
+                # 2026]91 格式，补充左括号
+                converted_case_no = f"[{original_case_no}"
+            
+            params['case_no'] = converted_case_no
+            logger.info(f"立案查询案件编号转换: {original_case_no} -> {converted_case_no}")
+        
+        # 检查并更新登录状态
+        if not login_manager.check_and_renew_login():
+            logger.error("获取有效登录信息失败")
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询立案信息',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 获取带认证信息的请求头
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            logger.error("获取认证请求头失败")
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        logger.info(f"立案查询请求: {HANDLE_API_BASE}")
+        logger.info(f"  原始参数: page={page}, page_size={page_size}, case_no={case_no}")
+        logger.info(f"  转换后参数: {params}")
+        
+        # 调用内部服务（带认证头）
+        response = requests.get(
+            HANDLE_API_BASE,
+            headers=headers,
+            params=params,
+            timeout=30
+        )
+        
+        # 返回结果
+        if response.status_code == 200:
+            data = response.json()
+            
+            # 处理数据：将案由平铺到 item 级别 + 内存分页
+            # 数据结构: {code:200, data:{code:200, data:{data:[...], totalNum:...}}}
+            try:
+                outer_data = data.get('data', {})
+                if isinstance(outer_data, dict):
+                    inner_data = outer_data.get('data', {})
+                    if isinstance(inner_data, dict):
+                        items = inner_data.get('data', [])
+                        if isinstance(items, list):
+                            # 保存总条数
+                            total_count = len(items)
+                            # 内存分页
+                            offset = (page - 1) * page_size
+                            paginated_items = items[offset:offset + page_size]
+                            # 更新数据
+                            inner_data['data'] = paginated_items
+                            inner_data['totalNum'] = total_count
+                            # 更新案由
+                            print(f"[DEBUG] 处理案由: {len(paginated_items)}条", flush=True)
+                            for item in paginated_items:
+                                if isinstance(item, dict):
+                                    cases = item.get('cases')
+                                    case_reason = None
+                                    if cases:
+                                        if isinstance(cases, dict):
+                                            # cases 是对象
+                                            case_reason = cases.get('case_reason')
+                                        elif isinstance(cases, list) and len(cases) > 0:
+                                            # cases 是数组，取第一个元素
+                                            first_case = cases[0]
+                                            if isinstance(first_case, dict):
+                                                case_reason = first_case.get('case_reason')
+                                    if case_reason:
+                                        print(f"[DEBUG] 设置案由: {case_reason[:20]}", flush=True)
+                                        item['case_reason'] = case_reason
+            except Exception as e:
+                logger.warning(f"处理数据时出错: {e}")
+            
+            return jsonify({
+                'code': 200,
+                'message': '查询成功',
+                'data': data,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            logger.error(f"内部服务返回错误: {response.status_code}, {response.text}")
+            return jsonify({
+                'code': response.status_code,
+                'message': f'内部服务错误: {response.status_code}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        logger.error("立案查询超时")
+        return jsonify({
+            'code': 504,
+            'message': '请求内部服务超时',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"立案查询请求异常: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'请求内部服务失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"立案查询错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/handle/detail', methods=['GET'])
+def query_handle_detail():
+    """
+    立案详情查询接口 - 代理调用内部服务
+    参数:
+      - id: 案件ID（必填）
+    """
+    try:
+        # 获取查询参数
+        item_id = request.args.get('id')
+        
+        if not item_id:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: id',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # 检查并更新登录状态
+        if not login_manager.check_and_renew_login():
+            logger.error("获取有效登录信息失败")
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询详情',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 获取带认证信息的请求头
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            logger.error("获取认证请求头失败")
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 构建内部API URL
+        detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
+        
+        logger.info(f"立案详情查询请求: {detail_url}")
+        logger.info(f"  案件ID: {item_id}")
+        
+        # 调用内部服务（带认证头，POST方法）
+        response = requests.post(
+            detail_url,
+            headers=headers,
+            json={'id': item_id},
+            timeout=30
+        )
+        
+        # 返回结果
+        if response.status_code == 200:
+            data = response.json()
+            return jsonify({
+                'code': 200,
+                'message': '查询成功',
+                'data': data,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            logger.error(f"内部服务返回错误: {response.status_code}, {response.text}")
+            return jsonify({
+                'code': response.status_code,
+                'message': f'内部服务错误: {response.status_code}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        logger.error("立案详情查询超时")
+        return jsonify({
+            'code': 504,
+            'message': '请求内部服务超时',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"立案详情查询请求异常: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'请求内部服务失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"立案详情查询错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+# ============================================
 # 健康检查
 # ============================================
 
@@ -1077,6 +1687,463 @@ def query_receive_detail():
 def health_check():
     """健康检查接口"""
     return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()})
+
+
+@app.route('/api/file/proxy', methods=['GET'])
+def proxy_file():
+    """
+    文件代理下载接口 - 用于代理访问内部服务器的文件
+    解决客户端无法直接访问内网文件的问题
+    参数:
+      - url: 文件URL（必填，需要进行URL编码）
+    """
+    try:
+        # 获取文件URL参数
+        file_url = request.args.get('url')
+        
+        if not file_url:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: url',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # URL解码
+        from urllib.parse import unquote
+        file_url = unquote(file_url)
+        
+        # 验证URL是否来自允许的服务器（安全校验）
+        allowed_hosts = ['10.96.10.78:8080', '10.96.10.78']
+        is_allowed = any(host in file_url for host in allowed_hosts)
+        
+        if not is_allowed:
+            logger.warning(f"尝试访问不允许的文件地址: {file_url}")
+            return jsonify({
+                'code': 403,
+                'message': '访问被拒绝: 不允许的文件地址',
+                'timestamp': datetime.now().isoformat()
+            }), 403
+        
+        # 检查并更新登录状态（如果需要认证）
+        if not login_manager.check_and_renew_login():
+            logger.error("获取有效登录信息失败")
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法下载文件',
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 获取带认证信息的请求头
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            logger.error("获取认证请求头失败")
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        logger.info(f"文件代理下载: {file_url}")
+        
+        # 调用内部服务器获取文件
+        response = requests.get(
+            file_url,
+            headers=headers,
+            timeout=60,
+            stream=True
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"内部服务返回错误: {response.status_code}")
+            return jsonify({
+                'code': response.status_code,
+                'message': f'获取文件失败: {response.status_code}',
+                'timestamp': datetime.now().isoformat()
+            }), response.status_code
+        
+        # 获取文件名
+        file_name = file_url.split('/')[-1]
+        content_disposition = response.headers.get('Content-Disposition', '')
+        if 'filename=' in content_disposition:
+            import re
+            match = re.search(r'filename=["\']?([^"\';]+)["\']?', content_disposition)
+            if match:
+                file_name = match.group(1)
+        
+        # 获取Content-Type
+        content_type = response.headers.get('Content-Type', 'application/octet-stream')
+        
+        # 将文件流返回给客户端
+        from flask import Response
+        def generate():
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        
+        return Response(
+            generate(),
+            status=200,
+            headers={
+                'Content-Type': content_type,
+                'Content-Disposition': f'inline; filename="{file_name}"',
+                'Cache-Control': 'public, max-age=3600'
+            }
+        )
+        
+    except requests.exceptions.Timeout:
+        logger.error("文件下载超时")
+        return jsonify({
+            'code': 504,
+            'message': '下载文件超时',
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        logger.error(f"文件下载请求异常: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'下载文件失败: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"文件代理错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+# ============================================
+# 文档模板管理API
+# ============================================
+
+# 文档模板基础路径
+DOC_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), '文件生成')
+
+def get_file_extension(filename):
+    """获取文件扩展名"""
+    return os.path.splitext(filename)[1].lower()
+
+def remove_extension(filename):
+    """移除文件扩展名"""
+    return os.path.splitext(filename)[0]
+
+def scan_directory_tree(base_path, relative_path=''):
+    """
+    递归扫描目录，返回树形结构
+    最多三层：第一级是5个文件夹，第二级是文件或文件夹，第三级是文件
+    """
+    result = []
+    current_path = os.path.join(base_path, relative_path)
+    
+    if not os.path.exists(current_path):
+        return result
+    
+    def sort_key(item):
+        """排序规则：不予受理文件夹排最前"""
+        if item == '不予受理':
+            return (0, '')  # 排最前
+        elif os.path.isdir(os.path.join(current_path, item)):
+            return (1, item)  # 其他文件夹其次，按名称排序
+        else:
+            return (2, item)  # 文件排最后，按名称排序
+    
+    try:
+        items = sorted(os.listdir(current_path), key=sort_key)
+        for item in items:
+            # 跳过隐藏文件、临时文件和 output 文件夹
+            if item.startswith('.') or item.startswith('~') or item.startswith('~$') or item == 'output':
+                continue
+                
+            item_path = os.path.join(current_path, item)
+            item_relative_path = os.path.join(relative_path, item) if relative_path else item
+            
+            if os.path.isdir(item_path):
+                node = {
+                    'name': item,
+                    'displayName': item,
+                    'type': 'folder',
+                    'path': item_relative_path,
+                    'children': scan_directory_tree(base_path, item_relative_path)
+                }
+                result.append(node)
+            else:
+                # 文件节点
+                node = {
+                    'name': item,
+                    'displayName': remove_extension(item),
+                    'type': 'file',
+                    'path': item_relative_path,
+                    'ext': get_file_extension(item)
+                }
+                result.append(node)
+    except Exception as e:
+        logger.error(f"扫描目录出错 {current_path}: {str(e)}")
+    
+    return result
+
+@app.route('/api/doc_templates/tree', methods=['GET'])
+def get_doc_templates_tree():
+    """
+    获取文档模板目录树结构
+    返回文件生成文件夹的层级结构
+    """
+    try:
+        if not os.path.exists(DOC_TEMPLATES_DIR):
+            return jsonify({
+                'code': 404,
+                'message': '文档模板目录不存在',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 404
+        
+        tree = scan_directory_tree(DOC_TEMPLATES_DIR)
+        
+        return jsonify({
+            'code': 200,
+            'message': '获取成功',
+            'data': tree,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"获取文档模板树失败: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/doc_templates/download', methods=['GET'])
+def download_doc_template():
+    """
+    下载文档模板文件
+    参数: path - 文件相对路径
+    """
+    try:
+        file_path = request.args.get('path', '')
+        
+        if not file_path:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: path',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # 安全检查：确保路径在文档模板目录内
+        full_path = os.path.abspath(os.path.join(DOC_TEMPLATES_DIR, file_path))
+        base_path = os.path.abspath(DOC_TEMPLATES_DIR)
+        
+        if not full_path.startswith(base_path):
+            return jsonify({
+                'code': 403,
+                'message': '非法路径',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 403
+        
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            return jsonify({
+                'code': 404,
+                'message': '文件不存在',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 404
+        
+        # 获取文件名和扩展名
+        filename = os.path.basename(full_path)
+        file_ext = os.path.splitext(filename)[1].lower()
+        
+        # 根据文件扩展名设置正确的 mimetype
+        mimetype_map = {
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.xls': 'application/vnd.ms-excel'
+        }
+        mimetype = mimetype_map.get(file_ext)
+        
+        kwargs = {
+            'directory': os.path.dirname(full_path),
+            'path': os.path.basename(full_path),
+            'as_attachment': True,
+            'download_name': filename
+        }
+        if mimetype:
+            kwargs['mimetype'] = mimetype
+        
+        return send_from_directory(**kwargs)
+        
+    except Exception as e:
+        logger.error(f"下载文档模板失败: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+# ============================================
+# 文档生成API
+# ============================================
+
+@app.route('/api/doc_templates/generate', methods=['POST'])
+def generate_document():
+    """
+    生成文档 - 根据模板和案件数据填充文档
+    参数:
+      - template_path: 模板相对路径（如 '1-立案/（受理）立案审批表.docx'）
+      - case_id: 案件ID（从立案详情API获取数据）
+    """
+    try:
+        # 获取请求参数
+        params = request.get_json() or {}
+        template_path = params.get('template_path', '')
+        case_id = params.get('case_id', '')
+        
+        if not template_path:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: template_path',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        if not case_id:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: case_id',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # 安全检查模板路径
+        full_template_path = os.path.abspath(os.path.join(DOC_TEMPLATES_DIR, template_path))
+        base_path = os.path.abspath(DOC_TEMPLATES_DIR)
+        
+        if not full_template_path.startswith(base_path):
+            return jsonify({
+                'code': 403,
+                'message': '非法模板路径',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 403
+        
+        if not os.path.exists(full_template_path):
+            return jsonify({
+                'code': 404,
+                'message': '模板文件不存在',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 404
+        
+        # 获取文件扩展名
+        file_ext = os.path.splitext(template_path)[1].lower()
+        
+        # 检查是否支持的格式
+        if file_ext not in ['.docx', '.xls', '.xlsx']:
+            return jsonify({
+                'code': 400,
+                'message': f'不支持的文件格式: {file_ext}，请使用 .docx, .xls 或 .xlsx 格式',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # 调用内部API获取案件详情
+        if not login_manager.check_and_renew_login():
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询案件详情',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            return jsonify({
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        # 调用内部API获取案件详情
+        detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
+        response = requests.post(
+            detail_url,
+            headers=headers,
+            json={'id': case_id},
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            return jsonify({
+                'code': response.status_code,
+                'message': f'获取案件详情失败: {response.status_code}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        case_data = response.json()
+        
+        # 生成输出文件名
+        file_ext = os.path.splitext(template_path)[1].lower()  # 获取原文件扩展名
+        case_no = case_data.get('data', {}).get('case_no', case_id)
+        # 如果 case_no 以"明"开头，则去掉"明"字
+        if case_no and str(case_no).startswith('明'):
+            case_no = str(case_no)[1:]
+        # 移除案号中的特殊字符
+        safe_case_no = re.sub(r'[\\/:*?"<>|]', '_', str(case_no))
+        # 生成时间戳 (年月日时分秒)
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        # 输出文件名：案号-时间.扩展名
+        output_filename = f"{safe_case_no}-{timestamp}{file_ext}"
+        
+        # 确保输出目录存在
+        output_dir = os.path.join(DOC_TEMPLATES_DIR, 'output')
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, output_filename)
+        
+        # 导入文档生成器并生成文档
+        from document_generator import DocumentGenerator
+        generator = DocumentGenerator(full_template_path, output_path)
+        generator.generate({'data': case_data})
+        
+        logger.info(f"文档生成成功: {output_path}")
+        
+        # 根据文件扩展名设置正确的 mimetype
+        mimetype_map = {
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.xls': 'application/vnd.ms-excel'
+        }
+        mimetype = mimetype_map.get(file_ext)
+        
+        # 返回生成的文件
+        kwargs = {
+            'directory': output_dir,
+            'path': output_filename,
+            'as_attachment': True,
+            'download_name': output_filename
+        }
+        if mimetype:
+            kwargs['mimetype'] = mimetype
+        
+        return send_from_directory(**kwargs)
+        
+    except Exception as e:
+        logger.error(f"生成文档失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'code': 500,
+            'message': f'生成文档失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 
 # ============================================
@@ -1099,6 +2166,8 @@ def start_server():
     logger.info("  GET  /cases         - 案件管理列表")
     logger.info("  GET  /receive_query  - 收件查询页面")
     logger.info("  GET  /receive_detail - 收件详情页面")
+    logger.info("  GET  /handle_query   - 立案查询页面")
+    logger.info("  GET  /handle_detail  - 立案详情页面")
     logger.info("  [内部API服务]")
     logger.info("  GET  /api/status    - 服务状态")
     logger.info("  GET  /api/login/status    - 登录状态")
@@ -1113,6 +2182,12 @@ def start_server():
     logger.info("  DELETE /api/cases/<id>    - 删除案件")
     logger.info("  GET  /api/receive/query   - 收件查询（代理内部服务）")
     logger.info("  GET  /api/receive/detail  - 收件详情（代理内部服务）")
+    logger.info("  GET  /api/handle/query    - 立案查询（代理内部服务）")
+    logger.info("  GET  /api/handle/detail   - 立案详情（代理内部服务）")
+    logger.info("  GET  /api/file/proxy      - 文件代理下载")
+    logger.info("  GET  /api/doc_templates/tree     - 文档模板目录树")
+    logger.info("  GET  /api/doc_templates/download - 下载文档模板")
+    logger.info("  POST /api/doc_templates/generate - 生成文档")
     logger.info("=" * 60)
     
     app.run(

@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>预约仲裁申请详情 - 劳动仲裁信息查询综合服务平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .info-card {
+            background: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+        }
+        .info-card-header {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border-bottom: 2px solid #16a34a;
+            padding: 1rem 1.25rem;
+            border-radius: 0.75rem 0.75rem 0 0;
+        }
+        .info-row {
+            display: flex;
+            padding: 0.75rem 1.25rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            width: 140px;
+            color: #6b7280;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+        .info-value {
+            flex: 1;
+            color: #111827;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .section-title {
+            color: #16a34a;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .evidence-item {
+            background: #f8fafc;
+            border-left: 4px solid #16a34a;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 0 0.5rem 0.5rem 0;
+        }
+        .request-item {
+            background: #faf5ff;
+            border: 1px solid #e9d5ff;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto max-w-7xl p-4">
+        <!-- 标题 -->
+        <header class="bg-gradient-to-r from-green-600 to-green-800 text-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold">
+                        <i class="fas fa-file-alt mr-2"></i>预约仲裁申请详情
+                    </h1>
+                    <p class="opacity-90 mt-2" id="reserveIdDisplay">加载中...</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="window.print()" class="bg-white text-green-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                        <i class="fas fa-print mr-2"></i>打印
+                    </button>
+                    <button onclick="window.close()" class="bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition">
+                        <i class="fas fa-times mr-2"></i>关闭
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 加载状态 -->
+        <div id="loadingState" class="bg-white rounded-xl shadow-lg p-12 text-center">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-gray-600">正在加载详情数据...</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <div id="errorState" class="hidden bg-white rounded-xl shadow-lg p-12 text-center">
+            <i class="fas fa-exclamation-circle text-red-400 text-5xl mb-4"></i>
+            <p class="text-red-500 text-lg" id="errorMessage">加载失败</p>
+            <button onclick="loadDetail()" class="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                <i class="fas fa-refresh mr-2"></i>重新加载
+            </button>
+        </div>
+
+        <!-- 详情内容 -->
+        <div id="detailContent" class="hidden fade-in space-y-6">
+            <!-- 基本信息 -->
+            <div class="info-card">
+                <div class="info-card-header">
+                    <h2 class="section-title text-lg">
+                        <i class="fas fa-info-circle"></i> 基本信息
+                    </h2>
+                </div>
+                <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2" id="basicInfoContent">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 案件信息 -->
+            <div class="info-card" id="caseSection">
+                <div class="info-card-header bg-gradient-to-r from-indigo-50 to-indigo-100 !border-indigo-500">
+                    <h2 class="section-title text-lg text-indigo-700">
+                        <i class="fas fa-briefcase"></i> 案件信息
+                    </h2>
+                </div>
+                <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2" id="caseInfoContent">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 申请人信息 -->
+            <div class="info-card" id="applicantSection">
+                <div class="info-card-header">
+                    <h2 class="section-title text-lg">
+                        <i class="fas fa-user"></i> 申请人信息
+                    </h2>
+                </div>
+                <div id="applicantList" class="divide-y divide-gray-100">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 被申请人信息 -->
+            <div class="info-card" id="respondentSection">
+                <div class="info-card-header bg-gradient-to-r from-blue-50 to-blue-100 !border-blue-500">
+                    <h2 class="section-title text-lg text-blue-700">
+                        <i class="fas fa-building"></i> 被申请人信息
+                    </h2>
+                </div>
+                <div id="respondentList" class="divide-y divide-gray-100">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 事实与理由 -->
+            <div class="info-card" id="factReasonSection">
+                <div class="info-card-header bg-gradient-to-r from-yellow-50 to-yellow-100 !border-yellow-500">
+                    <h2 class="section-title text-lg text-yellow-700">
+                        <i class="fas fa-file-text"></i> 事实与理由
+                    </h2>
+                </div>
+                <div class="p-4 space-y-4" id="factReasonContent">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 仲裁请求 -->
+            <div class="info-card" id="requestSection">
+                <div class="info-card-header bg-gradient-to-r from-purple-50 to-purple-100 !border-purple-500">
+                    <h2 class="section-title text-lg text-purple-700">
+                        <i class="fas fa-gavel"></i> 仲裁请求
+                    </h2>
+                </div>
+                <div class="p-4" id="requestList">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 证据材料 -->
+            <div class="info-card" id="evidenceSection">
+                <div class="info-card-header bg-gradient-to-r from-teal-50 to-teal-100 !border-teal-500">
+                    <h2 class="section-title text-lg text-teal-700">
+                        <i class="fas fa-folder-open"></i> 证据材料
+                    </h2>
+                </div>
+                <div class="p-4" id="evidenceList">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 代理人信息 -->
+            <div class="info-card" id="agentSection">
+                <div class="info-card-header bg-gradient-to-r from-pink-50 to-pink-100 !border-pink-500">
+                    <h2 class="section-title text-lg text-pink-700">
+                        <i class="fas fa-user-tie"></i> 代理人信息
+                    </h2>
+                </div>
+                <div id="agentList" class="divide-y divide-gray-100">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 文书链接 -->
+            <div class="info-card" id="wordUrlSection">
+                <div class="info-card-header bg-gradient-to-r from-cyan-50 to-cyan-100 !border-cyan-500">
+                    <h2 class="section-title text-lg text-cyan-700">
+                        <i class="fas fa-file-word"></i> 文书材料
+                    </h2>
+                </div>
+                <div class="p-4" id="wordUrlList">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 回复意见 -->
+            <div class="info-card" id="replySection">
+                <div class="info-card-header bg-gradient-to-r from-orange-50 to-orange-100 !border-orange-500">
+                    <h2 class="section-title text-lg text-orange-700">
+                        <i class="fas fa-comment"></i> 回复意见
+                    </h2>
+                </div>
+                <div class="p-4">
+                    <div id="replyOpinion" class="text-gray-800 bg-gray-50 p-4 rounded border border-gray-200 leading-relaxed">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+
+    <script>
+        // 状态映射
+        const statusMap = {
+            0: { text: '待审核', class: 'bg-yellow-100 text-yellow-800' },
+            1: { text: '审核通过', class: 'bg-green-100 text-green-800' },
+            2: { text: '审核不通过', class: 'bg-red-100 text-red-800' },
+            3: { text: '现场确认同意', class: 'bg-blue-100 text-blue-800' },
+            4: { text: '现场确认不同意', class: 'bg-orange-100 text-orange-800' },
+        };
+
+        // 获取URL参数
+        function getUrlParam(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+        }
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDetail();
+        });
+
+        // 加载详情数据
+        async function loadDetail() {
+            const id = getUrlParam('id');
+            if (!id) {
+                showError('缺少申请ID参数');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const response = await fetch(`/api/reserve/detail?id=${id}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if ((result.code === 200 || result.code === 0) && result.data) {
+                    renderDetail(result.data);
+                } else {
+                    showError(result.message || '加载失败');
+                }
+            } catch (error) {
+                console.error('加载详情失败:', error);
+                showError('加载失败: ' + error.message);
+            }
+        }
+
+        // 渲染详情数据
+        function renderDetail(data) {
+            // 处理可能的嵌套结构
+            let item = data.data || data;
+            if (item.data) item = item.data;
+            
+            // 更新页面标题
+            document.title = `预约申请 ${item.id || ''} - 劳动仲裁信息查询综合服务平台`;
+            document.getElementById('reserveIdDisplay').textContent = `预约申请ID: ${item.id || '-'}`;
+
+            // 基本信息
+            renderBasicInfo(item);
+
+            // 案件信息
+            renderCaseInfo(item.cases);
+
+            // 申请人信息
+            renderApplicants(item.applicant);
+
+            // 被申请人信息
+            renderRespondents(item.respondent);
+
+            // 事实与理由
+            renderFactReason(item.case_fact_reason);
+
+            // 仲裁请求
+            renderRequests(item.case_arb_request);
+
+            // 证据材料
+            renderEvidence(item.case_evidence_material);
+
+            // 代理人信息
+            renderAgents(item.commonAgent);
+
+            // 文书链接
+            renderWordUrls(item.word_url);
+
+            // 回复意见
+            renderReplyOpinion(item);
+
+
+
+            showContent();
+        }
+
+        // 渲染基本信息
+        function renderBasicInfo(item) {
+            const statusInfo = statusMap[item.status] || { text: '未知', class: 'bg-gray-100 text-gray-800' };
+            
+            const fields = [
+                { label: '申请ID', value: item.id },
+                { label: '状态', value: `<span class="status-badge ${statusInfo.class}">${statusInfo.text}</span>` },
+                { label: '申请日期', value: formatDate(item.submit_at) },
+                { label: '回复时间', value: formatDateTime(item.reason_at) },
+                { label: '类型', value: item.type === 1 ? '预约申请' : (item.type || '-') },
+                { label: '创建时间', value: formatDateTime(item.created_at) },
+                { label: '更新时间', value: formatDateTime(item.updated_at) },
+                { label: '仲裁机构ID', value: item.arb_org_id },
+                { label: '案件ID', value: item.case_id },
+                { label: '操作员ID', value: item.operator_id },
+            ];
+
+            document.getElementById('basicInfoContent').innerHTML = fields.map(f => `
+                <div class="info-row !p-2 !border-b-0">
+                    <span class="info-label">${f.label}:</span>
+                    <span class="info-value">${f.value || '-'}</span>
+                </div>
+            `).join('');
+        }
+
+        // 渲染案件信息
+        function renderCaseInfo(cases) {
+            if (!cases) {
+                document.getElementById('caseSection').classList.add('hidden');
+                return;
+            }
+            document.getElementById('caseSection').classList.remove('hidden');
+
+            const position = cases.position ? cases.position.map(p => p.name).join(' > ') : '';
+            
+            const fields = [
+                { label: '案件ID', value: cases.id },
+                { label: '案由', value: cases.case_reason },
+                { label: '备用案由', value: cases.bak_case_reason },
+                { label: '案件来源', value: cases.case_source },
+                { label: '申请人类型', value: cases.applicant_type },
+                { label: '涉及人数', value: cases.involve_number },
+                { label: '申请日期', value: formatDate(cases.apply_at) },
+                { label: '是否签订劳动合同', value: cases.is_sign_labor_contract ? '是' : '否' },
+                { label: '平台', value: cases.platform === 2 ? '线上申请' : cases.platform },
+                { label: '区域位置', value: position },
+            ];
+
+            document.getElementById('caseInfoContent').innerHTML = fields.map(f => `
+                <div class="info-row !p-2 !border-b-0">
+                    <span class="info-label">${f.label}:</span>
+                    <span class="info-value">${f.value || '-'}</span>
+                </div>
+            `).join('');
+        }
+
+        // 渲染申请人信息
+        function renderApplicants(applicants) {
+            const container = document.getElementById('applicantList');
+            
+            if (!applicants || applicants.length === 0) {
+                document.getElementById('applicantSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('applicantSection').classList.remove('hidden');
+            
+            container.innerHTML = applicants.map((app, index) => `
+                <div class="p-4 ${index > 0 ? 'border-t border-gray-100' : ''}">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                            申请人 ${index + 1}
+                        </span>
+                        <span class="font-bold text-lg">${escapeHtml(app.name)}</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">性别:</span>
+                            <span class="info-value">${escapeHtml(app.sex)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">民族:</span>
+                            <span class="info-value">${escapeHtml(app.nation)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">出生日期:</span>
+                            <span class="info-value">${escapeHtml(app.birth)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">身份证号:</span>
+                            <span class="info-value font-mono">${escapeHtml(app.id_number)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">联系电话:</span>
+                            <span class="info-value">${escapeHtml(app.mobile)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0 md:col-span-3">
+                            <span class="info-label">户籍地址:</span>
+                            <span class="info-value">${escapeHtml(app.registered_permanent_residence)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0 md:col-span-3">
+                            <span class="info-label">收件地址:</span>
+                            <span class="info-value">${escapeHtml(app.receive_address)}</span>
+                        </div>
+                        ${app.address ? `
+                        <div class="info-row !p-2 !border-b-0 md:col-span-3">
+                            <span class="info-label">居住地址:</span>
+                            <span class="info-value">${escapeHtml(app.address)}</span>
+                        </div>
+                        ` : ''}
+                        ${app.card_image_front ? `
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">身份证正面:</span>
+                            <a href="${getFileUrl(app.card_image_front)}" target="_blank" class="text-green-600 hover:text-green-800">
+                                <i class="fas fa-image mr-1"></i>查看图片
+                            </a>
+                        </div>
+                        ` : ''}
+                        ${app.card_image_reverse ? `
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">身份证反面:</span>
+                            <a href="${getFileUrl(app.card_image_reverse)}" target="_blank" class="text-green-600 hover:text-green-800">
+                                <i class="fas fa-image mr-1"></i>查看图片
+                            </a>
+                        </div>
+                        ` : ''}
+                    </div>
+                    ${renderAgentsList(app.agents, 'personal')}
+                </div>
+            `).join('');
+        }
+
+        // 渲染被申请人信息
+        function renderRespondents(respondents) {
+            const container = document.getElementById('respondentList');
+            
+            if (!respondents || respondents.length === 0) {
+                document.getElementById('respondentSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('respondentSection').classList.remove('hidden');
+            
+            container.innerHTML = respondents.map((resp, index) => `
+                <div class="p-4 ${index > 0 ? 'border-t border-gray-100' : ''}">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                            被申请人 ${index + 1}
+                        </span>
+                        <span class="font-bold text-lg">${escapeHtml(resp.name)}</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">统一社会信用代码:</span>
+                            <span class="info-value font-mono">${escapeHtml(resp.social_code)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">法定代表人:</span>
+                            <span class="info-value">${escapeHtml(resp.legal_name)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">联系电话:</span>
+                            <span class="info-value">${escapeHtml(resp.mobile)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">企业性质:</span>
+                            <span class="info-value">${escapeHtml(resp.company_nature)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">注册资本:</span>
+                            <span class="info-value">${escapeHtml(resp.registered_capital)}万元</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">注册地址:</span>
+                            <span class="info-value">${escapeHtml(resp.registered_address || resp.company_address)}</span>
+                        </div>
+                        ${resp.address ? `
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">办公地址:</span>
+                            <span class="info-value">${escapeHtml(resp.address)}</span>
+                        </div>
+                        ` : ''}
+                        ${resp.receive_address ? `
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">收件地址:</span>
+                            <span class="info-value">${escapeHtml(resp.receive_address)}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                    ${renderAgentsList(resp.agents, 'company')}
+                </div>
+            `).join('');
+        }
+
+        // 渲染事实与理由
+        function renderFactReason(factReason) {
+            const container = document.getElementById('factReasonContent');
+            
+            if (!factReason) {
+                document.getElementById('factReasonSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('factReasonSection').classList.remove('hidden');
+            
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div class="info-row !p-2 !border-b-0">
+                        <span class="info-label">入职时间:</span>
+                        <span class="info-value">${escapeHtml(factReason.entry_at)}</span>
+                    </div>
+                    <div class="info-row !p-2 !border-b-0">
+                        <span class="info-label">工作岗位:</span>
+                        <span class="info-value">${escapeHtml(factReason.job)}</span>
+                    </div>
+                    <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                        <span class="info-label">实际工作地点:</span>
+                        <span class="info-value">${escapeHtml(factReason.actual_workplace)}</span>
+                    </div>
+                    <div class="info-row !p-2 !border-b-0">
+                        <span class="info-label">工资标准:</span>
+                        <span class="info-value">${factReason.salary ? factReason.salary + ' 元' : '-'}</span>
+                    </div>
+                </div>
+                <div>
+                    <span class="text-gray-500 text-sm font-medium">事实与理由:</span>
+                    <p class="mt-2 text-gray-800 bg-white p-4 rounded border border-gray-200 leading-relaxed">
+                        ${escapeHtml(factReason.content)}
+                    </p>
+                </div>
+                ${factReason.main_cause && factReason.main_cause.length > 0 ? `
+                <div>
+                    <span class="text-gray-500 text-sm font-medium">主要原因:</span>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        ${factReason.main_cause.map(cause => `
+                            <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">${escapeHtml(cause)}</span>
+                        `).join('')}
+                    </div>
+                </div>
+                ` : ''}
+            `;
+        }
+
+        // 渲染仲裁请求
+        function renderRequests(requests) {
+            const container = document.getElementById('requestList');
+            
+            if (!requests || requests.length === 0) {
+                document.getElementById('requestSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('requestSection').classList.remove('hidden');
+            
+            container.innerHTML = requests.map((req, index) => `
+                <div class="request-item">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                            请求 ${index + 1}
+                        </span>
+                        ${req.is_main_dispute ? '<span class="text-xs text-red-600 font-medium">主要争议</span>' : ''}
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        ${req.type && req.type.length > 0 ? `
+                        <div>
+                            <span class="text-gray-500">争议类型:</span>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                                ${req.type.map(t => `
+                                    <span class="bg-white border border-purple-200 text-purple-700 text-xs px-2 py-1 rounded">${escapeHtml(t.name || t)}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${req.start_at || req.end_at ? `
+                        <div>
+                            <span class="text-gray-500">争议期间:</span>
+                            <span class="font-medium ml-2">${escapeHtml(req.start_at)} 至 ${escapeHtml(req.end_at)}</span>
+                        </div>
+                        ` : ''}
+                        ${req.object ? `
+                        <div>
+                            <span class="text-gray-500">标的金额:</span>
+                            <span class="font-medium text-red-600 ml-2">${formatMoney(req.object)}</span>
+                        </div>
+                        ` : ''}
+                        <div>
+                            <span class="text-gray-500">请求内容:</span>
+                            <p class="mt-1 text-gray-800 bg-white p-3 rounded border border-purple-200">${escapeHtml(req.intro || req.content)}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 渲染证据材料
+        function renderEvidence(evidenceList) {
+            const container = document.getElementById('evidenceList');
+            
+            if (!evidenceList || evidenceList.length === 0) {
+                document.getElementById('evidenceSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('evidenceSection').classList.remove('hidden');
+            
+            container.innerHTML = evidenceList.map((evi, index) => {
+                // 处理 file_path
+                let fileLinks = '';
+                if (evi.file_path) {
+                    try {
+                        const fileData = typeof evi.file_path === 'string' ? JSON.parse(evi.file_path) : evi.file_path;
+                        if (Array.isArray(fileData) && fileData.length > 0) {
+                            fileLinks = fileData.map(f => {
+                                const fileUrl = getFileUrl(f.url || f);
+                                return `
+                                    <a href="${fileUrl}" target="_blank" class="text-sm text-green-600 hover:text-green-800 mt-1 inline-block mr-3">
+                                        <i class="fas fa-file mr-1"></i>${escapeHtml(f.name || '查看文件')}
+                                    </a>
+                                `;
+                            }).join('');
+                        }
+                    } catch (e) {
+                        fileLinks = `<a href="${getFileUrl(evi.file_path)}" target="_blank" class="text-sm text-green-600 hover:text-green-800"><i class="fas fa-file mr-1"></i>查看文件</a>`;
+                    }
+                }
+                
+                return `
+                <div class="evidence-item">
+                    <div class="flex items-start gap-3">
+                        <span class="bg-teal-100 text-teal-800 text-xs font-medium px-2 py-1 rounded flex-shrink-0">
+                            证据 ${index + 1}
+                        </span>
+                        <div class="flex-1">
+                            <div class="font-medium text-gray-900 mb-1">${escapeHtml(evi.name || evi.material_name || '未命名')}</div>
+                            ${evi.material_type ? `<div class="text-xs text-gray-500 mb-1">类型: ${escapeHtml(evi.material_type)}</div>` : ''}
+                            ${evi.prove || evi.purpose ? `<div class="text-sm text-gray-600 mb-2"><span class="text-gray-500">证明目的:</span> ${escapeHtml(evi.prove || evi.purpose)}</div>` : ''}
+                            ${evi.page_number ? `<div class="text-xs text-gray-500 mb-1">页码: ${escapeHtml(evi.page_number)}</div>` : ''}
+                            ${fileLinks ? `<div class="mt-2">${fileLinks}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // 渲染代理人列表（用于申请人/被申请人内部的agents）
+        function renderAgentsList(agents, type) {
+            if (!agents || agents.length === 0) return '';
+            
+            const bgClass = type === 'personal' ? 'bg-green-50' : 'bg-blue-50';
+            const titleClass = type === 'personal' ? 'text-green-700' : 'text-blue-700';
+            
+            return `
+                <div class="mt-4 pt-4 border-t border-gray-100 ${bgClass} rounded-lg p-3">
+                    <div class="text-sm font-medium ${titleClass} mb-2">
+                        <i class="fas fa-user-tie mr-1"></i>委托代理人 (${agents.length}人)
+                    </div>
+                    ${agents.map((agent, idx) => `
+                        <div class="bg-white rounded p-3 mb-2 ${idx > 0 ? 'mt-2' : ''}">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="font-medium">${escapeHtml(agent.name)}</span>
+                                ${agent.law_firm_name ? `<span class="text-xs text-gray-500">(${escapeHtml(agent.law_firm_name)})</span>` : ''}
+                                ${agent.agent_auth ? `<span class="text-xs bg-gray-100 px-2 py-0.5 rounded">${escapeHtml(agent.agent_auth)}</span>` : ''}
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                ${agent.mobile ? `<div><span class="text-gray-500">电话:</span> ${escapeHtml(agent.mobile)}</div>` : ''}
+                                ${agent.id_number ? `<div><span class="text-gray-500">身份证:</span> <span class="font-mono">${escapeHtml(agent.id_number)}</span></div>` : ''}
+                                ${agent.lawyer_card_number ? `<div><span class="text-gray-500">律师证号:</span> ${escapeHtml(agent.lawyer_card_number)}</div>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // 渲染代理人信息（commonAgent）
+        function renderAgents(agents) {
+            const container = document.getElementById('agentList');
+            
+            if (!agents || agents.length === 0) {
+                document.getElementById('agentSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('agentSection').classList.remove('hidden');
+            
+            container.innerHTML = agents.map((agent, index) => `
+                <div class="p-4 ${index > 0 ? 'border-t border-gray-100' : ''}">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="bg-pink-100 text-pink-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                            代理人 ${index + 1}
+                        </span>
+                        <span class="font-bold">${escapeHtml(agent.name)}</span>
+                        ${agent.law_firm_name ? `<span class="text-xs text-gray-500">(${escapeHtml(agent.law_firm_name)})</span>` : ''}
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">联系电话:</span>
+                            <span class="info-value">${escapeHtml(agent.mobile)}</span>
+                        </div>
+                        <div class="info-row !p-2 !border-b-0">
+                            <span class="info-label">代理权限:</span>
+                            <span class="info-value">${escapeHtml(agent.agent_auth)}</span>
+                        </div>
+                        ${agent.id_number ? `
+                        <div class="info-row !p-2 !border-b-0 md:col-span-2">
+                            <span class="info-label">身份证号:</span>
+                            <span class="info-value font-mono">${escapeHtml(agent.id_number)}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 渲染文书链接
+        function renderWordUrls(wordUrls) {
+            const container = document.getElementById('wordUrlList');
+            
+            if (!wordUrls || wordUrls.length === 0) {
+                document.getElementById('wordUrlSection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('wordUrlSection').classList.remove('hidden');
+            
+            container.innerHTML = wordUrls.map((url, index) => {
+                const fileUrl = getFileUrl(url);
+                const fileName = url.split('/').pop() || `文书${index + 1}`;
+                return `
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-file-word text-blue-500"></i>
+                        <a href="${fileUrl}" target="_blank" class="text-green-600 hover:text-green-800">
+                            ${escapeHtml(fileName)}
+                        </a>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 渲染回复意见
+        function renderReplyOpinion(item) {
+            const opinion = item.reason || item.reply_opinion || item.review_opinion;
+            
+            if (!opinion) {
+                document.getElementById('replySection').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('replySection').classList.remove('hidden');
+            document.getElementById('replyOpinion').textContent = opinion;
+        }
+
+
+
+        // 显示加载状态
+        function showLoading() {
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('detailContent').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示内容
+        function showContent() {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('detailContent').classList.remove('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        // 显示错误
+        function showError(message) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('detailContent').classList.add('hidden');
+            document.getElementById('errorState').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            if (!text) return '-';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        // 格式化日期
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr.split(' ')[0] || dateStr;
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            
+            return `${year}-${month}-${day}`;
+        }
+
+        // 格式化日期时间
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const minute = String(date.getMinutes()).padStart(2, '0');
+            
+            return `${year}-${month}-${day} ${hour}:${minute}`;
+        }
+
+        // 格式化金额
+        function formatMoney(amount) {
+            if (!amount && amount !== 0) return '-';
+            return '¥' + parseFloat(amount).toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        // 获取文件完整URL（处理相对路径）
+        function getFileUrl(path) {
+            if (!path) return '#';
+            // 如果已经是完整URL，直接返回
+            if (path.startsWith('http://') || path.startsWith('https://')) {
+                return '/api/file/proxy?url=' + encodeURIComponent(path);
+            }
+            // 如果是相对路径，拼接内部服务器地址
+            const baseUrl = 'http://10.96.10.78:8080';
+            const fullUrl = baseUrl + (path.startsWith('/') ? path : '/' + path);
+            return '/api/file/proxy?url=' + encodeURIComponent(fullUrl);
+        }
+    </script>
+</body>
+</html>
