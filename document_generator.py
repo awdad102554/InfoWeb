@@ -296,6 +296,36 @@ class DocumentGenerator:
                 if underline is not None:
                     para.runs[0].font.underline = underline
     
+    def _get_field(self, data, primary_key, fallback_keys=None, default=''):
+        """
+        从字典中获取字段值，支持多个备选键名
+        
+        Args:
+            data: 字典数据
+            primary_key: 主键名
+            fallback_keys: 备选键名列表
+            default: 默认值
+        
+        Returns:
+            字段值或默认值
+        """
+        if not isinstance(data, dict):
+            return default
+        
+        # 尝试主键
+        if primary_key in data:
+            value = data[primary_key]
+            return value if value is not None else default
+        
+        # 尝试备选键
+        if fallback_keys:
+            for key in fallback_keys:
+                if key in data:
+                    value = data[key]
+                    return value if value is not None else default
+        
+        return default
+    
     def _preprocess_data(self, data):
         """预处理数据，计算所有变量值"""
         result = {}
@@ -327,32 +357,43 @@ class DocumentGenerator:
         
         # 2. 申请人信息
         applicant_arr = case_data.get('applicant_arr', [])
+        print(f"申请人数量: {len(applicant_arr)}")
+        
         if applicant_arr and len(applicant_arr) > 0:
             first_applicant = applicant_arr[0]
-            result['registered_permanent_residence'] = first_applicant.get('registered_permanent_residence', '')
-            result['applicant_name'] = first_applicant.get('name', '')
-            result['applicant_mobile'] = first_applicant.get('mobile', '')
-            result['applicant_id_number'] = first_applicant.get('id_number', '')
+            print(f"第一个申请人 keys: {list(first_applicant.keys()) if isinstance(first_applicant, dict) else 'N/A'}")
+            
+            result['registered_permanent_residence'] = self._get_field(first_applicant, 'registered_permanent_residence')
+            result['applicant_name'] = self._get_field(first_applicant, 'name')
+            result['applicant_mobile'] = self._get_field(first_applicant, 'mobile', ['phone', 'tel', 'telephone'])
+            result['applicant_id_number'] = self._get_field(first_applicant, 'id_number')
             # 数组形式访问
-            result['applicant_arr[0].name'] = first_applicant.get('name', '')
-            result['applicant_arr[0].mobile'] = first_applicant.get('mobile', '')
-            result['applicant_arr[0].id_number'] = first_applicant.get('id_number', '')
-            result['applicant_arr[0].address'] = first_applicant.get('registered_permanent_residence', '')
-            result['applicant_arr[0].registered_permanent_residence'] = first_applicant.get('registered_permanent_residence', '')
+            result['applicant_arr[0].name'] = self._get_field(first_applicant, 'name')
+            result['applicant_arr[0].mobile'] = self._get_field(first_applicant, 'mobile', ['phone', 'tel', 'telephone'])
+            result['applicant_arr[0].id_number'] = self._get_field(first_applicant, 'id_number')
+            result['applicant_arr[0].address'] = self._get_field(first_applicant, 'registered_permanent_residence', ['address'])
+            result['applicant_arr[0].registered_permanent_residence'] = self._get_field(first_applicant, 'registered_permanent_residence')
             
             # 申请人代理人信息
             agents = first_applicant.get('agents', [])
+            print(f"第一个申请人代理人数量: {len(agents)}")
+            
             if agents and len(agents) > 0:
                 first_agent = agents[0]
-                result['applicant_arr[0].agents[0].name'] = first_agent.get('name', '')
-                result['applicant_arr[0].agents[0].mobile'] = first_agent.get('mobile', '')
-                result['applicant_agent_name'] = first_agent.get('name', '')
-                result['applicant_agent_mobile'] = first_agent.get('mobile', '')
+                print(f"第一个申请人第一个代理人 keys: {list(first_agent.keys()) if isinstance(first_agent, dict) else 'N/A'}")
+                
+                result['applicant_arr[0].agents[0].name'] = self._get_field(first_agent, 'name')
+                result['applicant_arr[0].agents[0].mobile'] = self._get_field(first_agent, 'mobile', ['phone', 'tel', 'telephone'])
+                result['applicant_agent_name'] = self._get_field(first_agent, 'name')
+                result['applicant_agent_mobile'] = self._get_field(first_agent, 'mobile', ['phone', 'tel', 'telephone'])
+                
+                print(f"applicant_arr[0].agents[0].mobile 赋值: '{result['applicant_arr[0].agents[0].mobile']}'")
             else:
                 result['applicant_arr[0].agents[0].name'] = ''
                 result['applicant_arr[0].agents[0].mobile'] = ''
                 result['applicant_agent_name'] = ''
                 result['applicant_agent_mobile'] = ''
+                print("applicant_arr[0].agents[0].mobile 赋值为空字符串（无代理人）")
         else:
             result['registered_permanent_residence'] = ''
             result['applicant_name'] = ''
@@ -367,35 +408,58 @@ class DocumentGenerator:
             result['applicant_arr[0].agents[0].mobile'] = ''
             result['applicant_agent_name'] = ''
             result['applicant_agent_mobile'] = ''
+            print("applicant_arr[0].agents[0].mobile 赋值为空字符串（无申请人）")
         
         # 3. 被申请人信息（支持多个）
         respondent_arr = case_data.get('respondent_arr', [])
+        print(f"被申请人数量: {len(respondent_arr)}")
         
         # 第一个被申请人
         if respondent_arr and len(respondent_arr) > 0:
             first_respondent = respondent_arr[0]
-            result['respondent_arr[0].name'] = first_respondent.get('name', '')
-            result['respondent_arr[0].company_address'] = first_respondent.get('company_address', '')
-            result['respondent_name'] = first_respondent.get('name', '')
-            result['respondent_address'] = first_respondent.get('company_address', '')
-            result['respondent_social_code'] = first_respondent.get('social_code', '')
-            result['respondent_legal_name'] = first_respondent.get('legal_name', '')
-            result['respondent_arr[0].legal_name'] = first_respondent.get('legal_name', '')
-            result['respondent_arr[0].legal_mobile'] = first_respondent.get('legal_mobile', '')
+            print(f"第一个被申请人 keys: {list(first_respondent.keys()) if isinstance(first_respondent, dict) else 'N/A'}")
+            
+            result['respondent_arr[0].name'] = self._get_field(first_respondent, 'name')
+            result['respondent_arr[0].company_address'] = self._get_field(first_respondent, 'company_address', ['address'])
+            result['respondent_name'] = self._get_field(first_respondent, 'name')
+            result['respondent_address'] = self._get_field(first_respondent, 'company_address', ['address'])
+            result['respondent_social_code'] = self._get_field(first_respondent, 'social_code')
+            result['respondent_legal_name'] = self._get_field(first_respondent, 'legal_name')
+            result['respondent_arr[0].legal_name'] = self._get_field(first_respondent, 'legal_name')
+            # 支持多种可能的字段名：legal_mobile, legal_phone, legal_tel, phone, mobile
+            result['respondent_arr[0].legal_mobile'] = self._get_field(
+                first_respondent, 'legal_mobile', 
+                ['legal_phone', 'legal_tel', 'phone', 'mobile', 'tel', 'telephone']
+            )
+            
+            print(f"respondent_arr[0].legal_mobile 赋值: '{result['respondent_arr[0].legal_mobile']}'")
             
             # 被申请人代理人信息
             agents = first_respondent.get('agents', [])
+            print(f"第一个被申请人代理人数量: {len(agents)}")
+            
             if agents and len(agents) > 0:
                 first_agent = agents[0]
-                result['respondent_arr[0].agents[0].name'] = first_agent.get('name', '')
-                result['respondent_arr[0].agents[0].mobile'] = first_agent.get('mobile', '')
-                result['respondent_agent_name'] = first_agent.get('name', '')
-                result['respondent_agent_mobile'] = first_agent.get('mobile', '')
+                print(f"第一个被申请人第一个代理人 keys: {list(first_agent.keys()) if isinstance(first_agent, dict) else 'N/A'}")
+                
+                result['respondent_arr[0].agents[0].name'] = self._get_field(first_agent, 'name')
+                result['respondent_arr[0].agents[0].mobile'] = self._get_field(
+                    first_agent, 'mobile', 
+                    ['phone', 'tel', 'telephone']
+                )
+                result['respondent_agent_name'] = self._get_field(first_agent, 'name')
+                result['respondent_agent_mobile'] = self._get_field(
+                    first_agent, 'mobile', 
+                    ['phone', 'tel', 'telephone']
+                )
+                
+                print(f"respondent_arr[0].agents[0].mobile 赋值: '{result['respondent_arr[0].agents[0].mobile']}'")
             else:
                 result['respondent_arr[0].agents[0].name'] = ''
                 result['respondent_arr[0].agents[0].mobile'] = ''
                 result['respondent_agent_name'] = ''
                 result['respondent_agent_mobile'] = ''
+                print("respondent_arr[0].agents[0].mobile 赋值为空字符串（无代理人）")
         else:
             result['respondent_arr[0].name'] = ''
             result['respondent_arr[0].company_address'] = ''
@@ -409,23 +473,31 @@ class DocumentGenerator:
             result['respondent_arr[0].agents[0].mobile'] = ''
             result['respondent_agent_name'] = ''
             result['respondent_agent_mobile'] = ''
+            print("respondent_arr[0].legal_mobile 和 respondent_arr[0].agents[0].mobile 赋值为空字符串（无被申请人）")
         
         # 第二个被申请人（如果存在）
         if respondent_arr and len(respondent_arr) > 1:
             second_respondent = respondent_arr[1]
-            result['respondent_arr[1].name'] = second_respondent.get('name', '')
-            result['respondent_arr[1].legal_name'] = second_respondent.get('legal_name', '')
-            result['respondent_arr[1].legal_mobile'] = second_respondent.get('legal_mobile', '')
+            result['respondent_arr[1].name'] = self._get_field(second_respondent, 'name')
+            result['respondent_arr[1].legal_name'] = self._get_field(second_respondent, 'legal_name')
+            result['respondent_arr[1].legal_mobile'] = self._get_field(
+                second_respondent, 'legal_mobile',
+                ['legal_phone', 'legal_tel', 'phone', 'mobile', 'tel', 'telephone']
+            )
             
             agents = second_respondent.get('agents', [])
             if agents and len(agents) > 0:
                 first_agent = agents[0]
-                result['respondent_arr[1].agents[0].name'] = first_agent.get('name', '')
-                result['respondent_arr[1].agents[0].mobile'] = first_agent.get('mobile', '')
+                result['respondent_arr[1].agents[0].name'] = self._get_field(first_agent, 'name')
+                result['respondent_arr[1].agents[0].mobile'] = self._get_field(
+                    first_agent, 'mobile',
+                    ['phone', 'tel', 'telephone']
+                )
             else:
                 result['respondent_arr[1].agents[0].name'] = ''
                 result['respondent_arr[1].agents[0].mobile'] = ''
         else:
+            # 确保第二个被申请人的变量也有默认值
             result['respondent_arr[1].name'] = ''
             result['respondent_arr[1].legal_name'] = ''
             result['respondent_arr[1].legal_mobile'] = ''
