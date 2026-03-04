@@ -1152,16 +1152,20 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
                 
+                // 准备请求数据
+                const requestData = {
+                    template_paths: selectedFiles.map(f => f.path),
+                    case_id: caseId
+                };
+                console.log('生成文档请求:', requestData);
+                
                 // 调用批量生成API
                 const response = await fetch(`${API_BASE_URL}/doc_templates/generate`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        template_paths: selectedFiles.map(f => f.path),
-                        case_id: caseId
-                    }),
+                    body: JSON.stringify(requestData),
                     signal: controller.signal
                 });
                 
@@ -1175,9 +1179,20 @@
                 // 获取文件名
                 const disposition = response.headers.get('content-disposition');
                 let filename = '生成的文书.zip';
-                if (disposition && disposition.includes('filename=')) {
-                    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-                    if (match) filename = match[1].replace(/['"]/g, '');
+                if (disposition) {
+                    // 优先处理 RFC 5987 编码格式: filename*=UTF-8''encoded_filename
+                    const filenameStarMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+                    if (filenameStarMatch) {
+                        try {
+                            filename = decodeURIComponent(filenameStarMatch[1]);
+                        } catch (e) {
+                            filename = filenameStarMatch[1];
+                        }
+                    } else {
+                        // 处理普通格式: filename="xxx" 或 filename=xxx
+                        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                        if (match) filename = match[1].replace(/['"]/g, '');
+                    }
                 }
                 
                 // 下载文件

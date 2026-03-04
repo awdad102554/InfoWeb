@@ -2031,6 +2031,7 @@ def generate_document():
             }), 400
         
         # 安全检查所有模板路径
+        logger.info(f"接收到的模板路径: {template_paths}, 数量: {len(template_paths)}")
         base_path = os.path.abspath(DOC_TEMPLATES_DIR)
         valid_paths = []
         for path in template_paths:
@@ -2113,12 +2114,15 @@ def generate_document():
         
         logger.info(f"批量文档生成成功: {result}")
         
-        # 如果只有一个文件，直接返回
-        if len(result) == 1 and len(valid_paths) == 1:
-            file_type = list(result.keys())[0]
-            output_path = result[file_type]['path']
+        # 获取生成的文件列表和zip路径
+        generated_files = result['zip']['files']
+        logger.info(f"生成的文件数量: {len(generated_files)}, valid_paths数量: {len(valid_paths)}")
+        zip_path = result['zip']['path']
+        
+        # 如果只有一个文件，直接返回该文件
+        if len(generated_files) == 1:
+            output_path = generated_files[0]
             output_filename = os.path.basename(output_path)
-            output_dir = os.path.dirname(output_path)
             file_ext = os.path.splitext(output_path)[1].lower()
             
             mimetype_map = {
@@ -2128,33 +2132,27 @@ def generate_document():
             }
             mimetype = mimetype_map.get(file_ext)
             
-            kwargs = {
-                'directory': output_dir,
-                'path': output_filename,
-                'as_attachment': True,
-                'download_name': output_filename
-            }
-            if mimetype:
-                kwargs['mimetype'] = mimetype
+            # 使用 send_file 并确保文件名正确编码
+            from flask import send_file
+            from urllib.parse import quote
             
-            return send_from_directory(**kwargs)
+            response = send_file(
+                output_path,
+                as_attachment=True,
+                download_name=output_filename,
+                mimetype=mimetype
+            )
+            
+            # 手动设置 Content-Disposition 以确保文件名正确
+            # 使用 RFC 5987 编码（filename*=UTF-8''）
+            encoded_filename = quote(output_filename, safe='')
+            response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded_filename}"
+            
+            return response
         
-        # 多个文件，打包成zip
-        import zipfile
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        if case_no and str(case_no).startswith('明'):
-            case_no = str(case_no)[1:]
-        safe_case_no = re.sub(r'[\\/:*?"<>|]', '_', str(case_no))
-        zip_filename = f"{safe_case_no}-{timestamp}.zip"
-        output_dir = os.path.join(DOC_TEMPLATES_DIR, 'output')
-        zip_path = os.path.join(output_dir, zip_filename)
-        
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for file_type, info in result.items():
-                file_path = info['path']
-                if os.path.exists(file_path):
-                    arcname = os.path.basename(file_path)
-                    zf.write(file_path, arcname)
+        # 多个文件，返回zip
+        zip_filename = os.path.basename(zip_path)
+        output_dir = os.path.dirname(zip_path)
         
         return send_from_directory(
             directory=output_dir,
