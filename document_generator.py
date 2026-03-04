@@ -54,7 +54,60 @@ class DocumentGenerator:
                     for para in cell.paragraphs:
                         self._replace_in_paragraph(para, data)
         
+        # 替换文本框（textbox）中的变量
+        self._replace_in_textboxes(doc, data)
+        
         doc.save(self.output_path)
+    
+    def _replace_in_textboxes(self, doc, data):
+        """替换文本框中的变量"""
+        from docx.oxml.ns import qn
+        
+        # 遍历文档中的所有元素，查找文本框内容
+        body = doc._element
+        
+        # 查找所有 txbxContent 元素（文本框内容）
+        for txbx in body.iter(qn('w:txbxContent')):
+            for para in txbx.findall(qn('w:p')):
+                self._replace_in_paragraph_element(para, data)
+    
+    def _replace_in_paragraph_element(self, p_element, data):
+        """替换段落元素中的变量（XML 级别）"""
+        from docx.oxml.ns import qn
+        
+        # 获取段落的所有文本
+        text = ''.join(t.text or '' for t in p_element.iter(qn('w:t')))
+        if not text:
+            return
+        
+        original_text = text
+        new_text = self._replace_text(text, data)
+        
+        if new_text != original_text:
+            # 找到第一个 w:t 元素并替换其文本
+            first_t = None
+            for t in p_element.iter(qn('w:t')):
+                first_t = t
+                break
+            
+            if first_t is not None:
+                # 清除其他所有 w:t 元素
+                parent_map = {}
+                for parent in p_element.iter():
+                    for child in parent:
+                        parent_map[child] = parent
+                
+                t_elements = list(p_element.iter(qn('w:t')))
+                for i, t_elem in enumerate(t_elements):
+                    if i == 0:
+                        # 第一个元素设置新文本
+                        t_elem.text = new_text
+                        # 清除 xml:space 属性（如果有）
+                        if '{http://www.w3.org/XML/1998/namespace}space' in t_elem.attrib:
+                            del t_elem.attrib['{http://www.w3.org/XML/1998/namespace}space']
+                    else:
+                        # 其他元素清空
+                        t_elem.text = ''
     
     def _generate_excel(self, data):
         """生成 Excel 文档 - 保留格式"""
@@ -245,8 +298,60 @@ class DocumentGenerator:
                 value = str(data[var_clean])
                 text = text[:start] + value + text[end:]
                 print(f"替换: {{{var_clean[:50]}...}} -> {value[:50]}...")
+            elif var_clean.startswith('年月日_'):
+                # 处理 {年月日_字段名} 格式，如 {年月日_handle_at} -> 2026年2月14日
+                base_field = var_clean[4:]  # 去掉 '年月日_' 前缀
+                if base_field in data:
+                    date_value = data[base_field]
+                    if date_value:
+                        chinese_date = self._convert_to_chinese_date(date_value)
+                        text = text[:start] + chinese_date + text[end:]
+                        print(f"替换: {{{var_clean}}} -> {chinese_date}")
         
         return text
+    
+    def _convert_to_chinese_date(self, date_value):
+        """将日期值转换为中文格式，如 2026-02-14 -> 2026年2月14日"""
+        from datetime import datetime
+        
+        if not date_value:
+            return ''
+        
+        date_str = str(date_value).strip()
+        
+        # 尝试解析各种日期格式
+        formats = [
+            '%Y-%m-%d',      # 2026-02-14
+            '%Y/%m/%d',      # 2026/02/14
+            '%Y%m%d',        # 20260214
+            '%Y-%m-%d %H:%M:%S',  # 2026-02-14 10:30:00
+            '%Y/%m/%d %H:%M:%S',  # 2026/02/14 10:30:00
+        ]
+        
+        for fmt in formats:
+            try:
+                # 对于带时间的格式，只取日期部分
+                if ' ' in date_str:
+                    date_part = date_str.split()[0]
+                else:
+                    date_part = date_str
+                
+                # 尝试匹配格式
+                if fmt in ['%Y-%m-%d', '%Y/%m/%d']:
+                    dt = datetime.strptime(date_part, fmt)
+                elif fmt == '%Y%m%d' and len(date_part) == 8:
+                    dt = datetime.strptime(date_part, fmt)
+                elif ' ' in date_str:
+                    dt = datetime.strptime(date_str, fmt)
+                else:
+                    continue
+                
+                return f"{dt.year}年{dt.month}月{dt.day}日"
+            except (ValueError, TypeError):
+                continue
+        
+        # 如果都无法解析，返回原值
+        return date_str
     
     def _replace_in_paragraph(self, para, data):
         """替换段落中的变量（Word）"""
@@ -261,6 +366,14 @@ class DocumentGenerator:
         
         # 如果有替换，更新段落文本（保留格式）
         if text != original_text:
+            # 确保所有 runs 合并后再替换（处理变量分散在多个 runs 的情况）
+            if len(para.runs) > 1:
+                # 合并所有 runs 的文本
+                full_text = ''.join(run.text for run in para.runs)
+                # 重新进行替换
+                new_text = self._replace_text(full_text, data)
+                if new_text != full_text:
+                    text = new_text
             if para.runs:
                 # 分析段落中包含变量内容的 runs（包含 { 或 } 的 runs）
                 runs_with_vars = []
@@ -363,12 +476,16 @@ class DocumentGenerator:
         print(f"案件数据 keys: {case_data.keys() if hasattr(case_data, 'keys') else 'N/A'}")
         
         # 1. 基础字段
-        case_no = case_data.get('case_no', '')
+        case_no_raw = case_data.get('case_no', '')
         # 如果 case_no 以"明"开头，则去掉"明"字
-        if case_no and case_no.startswith('明'):
-            case_no = case_no[1:]
-        # 将方括号 [] 替换为圆括号 ()
-        case_no = case_no.replace('[', '（').replace(']', '）')
+        if case_no_raw and case_no_raw.startswith('明'):
+            case_no_raw = case_no_raw[1:]
+        
+        # 保存原始案号（保留方括号 [] 格式，用于立案审批表）
+        result['case_no_raw'] = case_no_raw
+        
+        # 将方括号 [] 替换为圆括号 ()，用于其他文书
+        case_no = case_no_raw.replace('[', '（').replace(']', '）')
         result['case_no'] = case_no
         result['applicant'] = case_data.get('applicant', '')
         # 处理带空格的变量 { applicant}
@@ -378,6 +495,9 @@ class DocumentGenerator:
         result['apply_at'] = case_data.get('apply_at', '')
         result['handle_at'] = case_data.get('handle_at', '')
         result['case_reason'] = case_data.get('case_reason', '')
+        
+        # 当前年份
+        result['year'] = str(datetime.now().year)
         
         # 2. 申请人信息
         applicant_arr = case_data.get('applicant_arr', [])
