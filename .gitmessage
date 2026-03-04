@@ -1,0 +1,15 @@
+# Commit 格式: <type>: <subject>
+#
+# Type 类型:
+#   feat:     新功能
+#   fix:      修复bug
+#   docs:     文档变更
+#   style:    代码格式调整（不影响功能）
+#   refactor: 代码重构
+#   perf:     性能优化
+#   test:     测试相关
+#   chore:    构建/工具/杂项
+#
+# 示例:
+#   feat: 添加批量文档生成功能
+#   fix: 修复变量替换加粗格式问题

@@ -262,20 +262,42 @@ class DocumentGenerator:
         # 如果有替换，更新段落文本（保留格式）
         if text != original_text:
             if para.runs:
+                # 分析段落中包含变量内容的 runs（包含 { 或 } 的 runs）
+                runs_with_vars = []
+                
+                for run in para.runs:
+                    run_text = run.text
+                    if run_text.strip():  # 忽略纯空白 runs
+                        if '{' in run_text or '}' in run_text:
+                            runs_with_vars.append(run)
+                
+                # 判断是否应该加粗：
+                # 只有当变量所在的 runs 明确设置为加粗时才加粗
+                # 否则（包括 None 或 False）都不加粗
+                if runs_with_vars:
+                    # 检查是否有任何变量 run 明确设置为加粗
+                    any_var_bold_true = any(run.font.bold is True for run in runs_with_vars)
+                    # 检查是否所有变量 runs 都明确设置为非加粗
+                    all_var_bold_false = all(run.font.bold is False for run in runs_with_vars)
+                    
+                    if any_var_bold_true:
+                        target_bold = True
+                    elif all_var_bold_false:
+                        target_bold = False
+                    else:
+                        # 有 None 的情况（未明确设置），默认不加粗
+                        target_bold = False
+                else:
+                    # 没有识别到变量 runs，使用第一个 run 的格式（向后兼容）
+                    first_run = para.runs[0]
+                    target_bold = first_run.font.bold if first_run.font.bold is not None else False
+                
+                # 获取其他格式属性（使用第一个 run）
                 first_run = para.runs[0]
                 font_name = first_run.font.name
                 font_size = first_run.font.size
-                bold = first_run.font.bold
                 italic = first_run.font.italic
                 underline = first_run.font.underline
-                
-                # 检查段落中所有 runs 是否都明确设置了 bold=False
-                # 如果是，则替换后也应该明确设置为 False，避免继承段落样式的加粗
-                all_runs_bold_false = all(
-                    run.font.bold is False for run in para.runs if run.text.strip()
-                )
-                if all_runs_bold_false:
-                    bold = False
                 
                 # 清除所有 runs
                 for run in para.runs[1:]:
@@ -289,8 +311,8 @@ class DocumentGenerator:
                     para.runs[0].font.name = font_name
                 if font_size:
                     para.runs[0].font.size = font_size
-                if bold is not None:
-                    para.runs[0].font.bold = bold
+                # 明确设置加粗或不加粗
+                para.runs[0].font.bold = target_bold
                 if italic is not None:
                     para.runs[0].font.italic = italic
                 if underline is not None:
@@ -345,6 +367,8 @@ class DocumentGenerator:
         # 如果 case_no 以"明"开头，则去掉"明"字
         if case_no and case_no.startswith('明'):
             case_no = case_no[1:]
+        # 将方括号 [] 替换为圆括号 ()
+        case_no = case_no.replace('[', '（').replace(']', '）')
         result['case_no'] = case_no
         result['applicant'] = case_data.get('applicant', '')
         # 处理带空格的变量 { applicant}

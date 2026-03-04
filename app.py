@@ -1994,20 +1994,30 @@ def download_doc_template():
 def generate_document():
     """
     生成文档 - 根据模板和案件数据填充文档
+    支持批量生成和合并
     参数:
-      - template_path: 模板相对路径（如 '1-立案/（受理）立案审批表.docx'）
+      - template_path: 模板相对路径（单文件，向后兼容）
+      - template_paths: 模板路径列表（多文件批量生成）
       - case_id: 案件ID（从立案详情API获取数据）
+    返回:
+      - 单文件: 直接返回文件
+      - 多文件: 返回zip压缩包
     """
     try:
         # 获取请求参数
         params = request.get_json() or {}
         template_path = params.get('template_path', '')
+        template_paths = params.get('template_paths', [])
         case_id = params.get('case_id', '')
         
-        if not template_path:
+        # 兼容单文件模式
+        if template_path and not template_paths:
+            template_paths = [template_path]
+        
+        if not template_paths:
             return jsonify({
                 'code': 400,
-                'message': '缺少参数: template_path',
+                'message': '缺少参数: template_path 或 template_paths',
                 'data': None,
                 'timestamp': datetime.now().isoformat()
             }), 400
@@ -2020,34 +2030,40 @@ def generate_document():
                 'timestamp': datetime.now().isoformat()
             }), 400
         
-        # 安全检查模板路径
-        full_template_path = os.path.abspath(os.path.join(DOC_TEMPLATES_DIR, template_path))
+        # 安全检查所有模板路径
         base_path = os.path.abspath(DOC_TEMPLATES_DIR)
+        valid_paths = []
+        for path in template_paths:
+            full_path = os.path.abspath(os.path.join(DOC_TEMPLATES_DIR, path))
+            if not full_path.startswith(base_path):
+                return jsonify({
+                    'code': 403,
+                    'message': f'非法模板路径: {path}',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 403
+            if not os.path.exists(full_path):
+                return jsonify({
+                    'code': 404,
+                    'message': f'模板文件不存在: {path}',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 404
+            # 检查文件格式
+            file_ext = os.path.splitext(path)[1].lower()
+            if file_ext not in ['.docx', '.xls', '.xlsx']:
+                return jsonify({
+                    'code': 400,
+                    'message': f'不支持的文件格式: {file_ext}，请使用 .docx 或 .xlsx 格式',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 400
+            valid_paths.append(path)
         
-        if not full_template_path.startswith(base_path):
-            return jsonify({
-                'code': 403,
-                'message': '非法模板路径',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 403
-        
-        if not os.path.exists(full_template_path):
-            return jsonify({
-                'code': 404,
-                'message': '模板文件不存在',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 404
-        
-        # 获取文件扩展名
-        file_ext = os.path.splitext(template_path)[1].lower()
-        
-        # 检查是否支持的格式
-        if file_ext not in ['.docx', '.xls', '.xlsx']:
+        if not valid_paths:
             return jsonify({
                 'code': 400,
-                'message': f'不支持的文件格式: {file_ext}，请使用 .docx, .xls 或 .xlsx 格式',
+                'message': '没有有效的模板文件',
                 'data': None,
                 'timestamp': datetime.now().isoformat()
             }), 400
@@ -2088,51 +2104,65 @@ def generate_document():
             }), 500
         
         case_data = response.json()
-        
-        # 生成输出文件名
-        file_ext = os.path.splitext(template_path)[1].lower()  # 获取原文件扩展名
         case_no = case_data.get('data', {}).get('case_no', case_id)
-        # 如果 case_no 以"明"开头，则去掉"明"字
+        
+        # 批量生成文档
+        from batch_document_generator import BatchDocumentGenerator
+        generator = BatchDocumentGenerator(DOC_TEMPLATES_DIR)
+        result = generator.generate_batch(valid_paths, case_data, case_no)
+        
+        logger.info(f"批量文档生成成功: {result}")
+        
+        # 如果只有一个文件，直接返回
+        if len(result) == 1 and len(valid_paths) == 1:
+            file_type = list(result.keys())[0]
+            output_path = result[file_type]['path']
+            output_filename = os.path.basename(output_path)
+            output_dir = os.path.dirname(output_path)
+            file_ext = os.path.splitext(output_path)[1].lower()
+            
+            mimetype_map = {
+                '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                '.xls': 'application/vnd.ms-excel'
+            }
+            mimetype = mimetype_map.get(file_ext)
+            
+            kwargs = {
+                'directory': output_dir,
+                'path': output_filename,
+                'as_attachment': True,
+                'download_name': output_filename
+            }
+            if mimetype:
+                kwargs['mimetype'] = mimetype
+            
+            return send_from_directory(**kwargs)
+        
+        # 多个文件，打包成zip
+        import zipfile
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         if case_no and str(case_no).startswith('明'):
             case_no = str(case_no)[1:]
-        # 移除案号中的特殊字符
         safe_case_no = re.sub(r'[\\/:*?"<>|]', '_', str(case_no))
-        # 生成时间戳 (年月日时分秒)
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        # 输出文件名：案号-时间.扩展名
-        output_filename = f"{safe_case_no}-{timestamp}{file_ext}"
-        
-        # 确保输出目录存在
+        zip_filename = f"{safe_case_no}-{timestamp}.zip"
         output_dir = os.path.join(DOC_TEMPLATES_DIR, 'output')
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, output_filename)
+        zip_path = os.path.join(output_dir, zip_filename)
         
-        # 导入文档生成器并生成文档
-        from document_generator import DocumentGenerator
-        generator = DocumentGenerator(full_template_path, output_path)
-        generator.generate({'data': case_data})
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for file_type, info in result.items():
+                file_path = info['path']
+                if os.path.exists(file_path):
+                    arcname = os.path.basename(file_path)
+                    zf.write(file_path, arcname)
         
-        logger.info(f"文档生成成功: {output_path}")
-        
-        # 根据文件扩展名设置正确的 mimetype
-        mimetype_map = {
-            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            '.xls': 'application/vnd.ms-excel'
-        }
-        mimetype = mimetype_map.get(file_ext)
-        
-        # 返回生成的文件
-        kwargs = {
-            'directory': output_dir,
-            'path': output_filename,
-            'as_attachment': True,
-            'download_name': output_filename
-        }
-        if mimetype:
-            kwargs['mimetype'] = mimetype
-        
-        return send_from_directory(**kwargs)
+        return send_from_directory(
+            directory=output_dir,
+            path=zip_filename,
+            as_attachment=True,
+            download_name=zip_filename,
+            mimetype='application/zip'
+        )
         
     except Exception as e:
         logger.error(f"生成文档失败: {str(e)}")
