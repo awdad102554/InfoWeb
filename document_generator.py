@@ -559,6 +559,23 @@ class DocumentGenerator:
         # 使用方括号 [] 格式
         case_no = case_no_raw
         result['case_no'] = case_no
+        
+        # 从案号中提取年份部分和编号，如 "永劳人仲案字[2026]123号"
+        # case_no_year -> "永劳人仲案字[2026]"
+        # case_no_no -> "123"
+        case_no_year = ''
+        case_no_no = ''
+        if case_no_raw:
+            # 提取年份部分（从开始到右方括号]，如：永劳人仲案字[2026]）
+            year_part_match = re.search(r'^(.+?\[\d{4}\])', case_no_raw)
+            if year_part_match:
+                case_no_year = year_part_match.group(1)
+            # 提取年后面的编号（右方括号后到"号"之前的数字）
+            no_match = re.search(r'\](\d+)号', case_no_raw)
+            if no_match:
+                case_no_no = no_match.group(1)
+        result['case_no_year'] = case_no_year
+        result['case_no_no'] = case_no_no
         result['applicant'] = case_data.get('applicant', '')
         # 处理带空格的变量 { applicant}
         result[' applicant'] = case_data.get('applicant', '')
@@ -789,14 +806,24 @@ class DocumentGenerator:
                 result['中文_handle_at'] = self._get_chinese_date(dt)
                 # 年月日格式 (2026年3月5日)
                 result['年月日_handle_at'] = f"{dt.year}年{dt.month}月{dt.day}日"
+                # 立案日期年月日单独字段
+                result['handle_at_y'] = str(dt.year)  # 年，如 2026
+                result['handle_at_m'] = str(dt.month)  # 月 1-12，无前导0
+                result['handle_at_d'] = str(dt.day)    # 日 1-31，无前导0
             except:
                 result['handle_at_chinese'] = handle_at
                 result['中文_handle_at'] = handle_at
                 result['年月日_handle_at'] = handle_at
+                result['handle_at_y'] = ''
+                result['handle_at_m'] = ''
+                result['handle_at_d'] = ''
         else:
             result['handle_at_chinese'] = ''
             result['中文_handle_at'] = ''
             result['年月日_handle_at'] = ''
+            result['handle_at_y'] = ''
+            result['handle_at_m'] = ''
+            result['handle_at_d'] = ''
         
         # 8.1 申请日期格式化
         apply_at = case_data.get('apply_at', '')
@@ -843,6 +870,33 @@ class DocumentGenerator:
         else:
             result['年月日_create_at'] = ''
             result['年月日_created_at'] = ''  # 兼容带 d 的写法
+        
+        # 12. 仲裁员和书记员信息
+        result['arbitrator'] = case_data.get('arbitrator', '') or ''
+        result['arbitrator_one'] = case_data.get('arbitrator_one', '') or ''
+        result['arbitrator_two'] = case_data.get('arbitrator_two', '') or ''
+        result['clerk'] = case_data.get('clerk', '') or ''
+        
+        # 13. 反申请日期（从 review_matter 中查找 apply_matter='仲裁反申请' 的条目，取 start_at）
+        re_at = self._get_reverse_request_date(case_data)
+        if re_at:
+            try:
+                # 解析日期，格式可能是 "2025-12-31 00:00:00"
+                dt = datetime.strptime(re_at.split()[0], '%Y-%m-%d')
+                result['re_at_y'] = str(dt.year)  # 年，如 2026
+                result['re_at_m'] = str(dt.month)  # 月 1-12，无前导0
+                result['re_at_d'] = str(dt.day)    # 日 1-31，无前导0
+                result['中文_re_at'] = self._get_chinese_date(dt)  # 中文日期，如 二零二五年十二月三十一日
+            except:
+                result['re_at_y'] = ''
+                result['re_at_m'] = ''
+                result['re_at_d'] = ''
+                result['中文_re_at'] = ''
+        else:
+            result['re_at_y'] = ''
+            result['re_at_m'] = ''
+            result['re_at_d'] = ''
+            result['中文_re_at'] = ''
         
         return result
     
@@ -958,17 +1012,41 @@ class DocumentGenerator:
     def _get_tribunal_tel(self, case_data):
         """
         获取开庭电话（从 tribunal_plan 最后一个元素提取 tel 字段）
+        如果获取不到则返回默认值：0598-3650311
         """
+        default_tel = '0598-3650311'
+        
         tribunal_plan = case_data.get('tribunal_plan', [])
         if not tribunal_plan or not isinstance(tribunal_plan, list):
-            return ''
+            return default_tel
         
         # 获取最后一个元素
         last_plan = tribunal_plan[-1]
         if not isinstance(last_plan, dict):
+            return default_tel
+        
+        tel = last_plan.get('tel', '')
+        return tel if tel else default_tel
+    
+    def _get_reverse_request_date(self, case_data):
+        """
+        获取反申请日期（从 review_matter 中查找 apply_matter 包含'反申请'字样的条目，取 start_at 字段）
+        这是反申请的实际提交日期，比 created_at 更准确
+        """
+        review_matter = case_data.get('review_matter', [])
+        if not review_matter or not isinstance(review_matter, list):
             return ''
         
-        return last_plan.get('tel', '')
+        # 查找 apply_matter 包含'反申请'字样的条目
+        for matter in review_matter:
+            if isinstance(matter, dict):
+                apply_matter = matter.get('apply_matter', '') or ''
+                if '反申请' in apply_matter:
+                    start_at = matter.get('start_at', '')
+                    if start_at:
+                        return start_at
+        
+        return ''
 
 
 def generate_document(template_name, output_name, case_id):
