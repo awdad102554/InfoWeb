@@ -91,6 +91,21 @@ class DocumentGenerator:
                 break
             
             if first_t is not None:
+                # 检查是否有下划线或粗体格式需要保留
+                has_underline = False
+                has_bold = False
+                
+                for r_elem in p_element.iter(qn('w:r')):
+                    # 检查这个 run 是否包含变量文本
+                    run_text = ''.join(t.text or '' for t in r_elem.iter(qn('w:t')))
+                    if '{' in run_text:
+                        # 检查是否有下划线格式
+                        if list(r_elem.iter(qn('w:u'))):
+                            has_underline = True
+                        # 检查是否有粗体格式
+                        if list(r_elem.iter(qn('w:b'))):
+                            has_bold = True
+                
                 # 清除其他所有 w:t 元素
                 parent_map = {}
                 for parent in p_element.iter():
@@ -108,6 +123,38 @@ class DocumentGenerator:
                     else:
                         # 其他元素清空
                         t_elem.text = ''
+                
+                # 找到包含第一个 w:t 的 w:r 元素
+                first_r = None
+                for r_elem in p_element.iter(qn('w:r')):
+                    for t_elem in r_elem.iter(qn('w:t')):
+                        if t_elem == first_t:
+                            first_r = r_elem
+                            break
+                    if first_r is not None:
+                        break
+                
+                if first_r is not None:
+                    # 如果替换了 case_no 相关变量，去除粗体格式
+                    if '{case_no' in original_text or '{case_no_raw' in original_text:
+                        # 移除所有 w:b 元素（粗体标记）
+                        for b_elem in list(first_r.iter(qn('w:b'))):
+                            first_r.remove(b_elem)
+                    elif has_bold:
+                        # 保留粗体格式（添加 w:b 元素）
+                        if not list(first_r.iter(qn('w:b'))):
+                            from docx.oxml import OxmlElement
+                            b_elem = OxmlElement('w:b')
+                            first_r.insert(0, b_elem)
+                    
+                    # 保留下划线格式
+                    if has_underline and '{case_no' not in original_text and '{case_no_raw' not in original_text:
+                        # 添加下划线元素（如果不存在）
+                        if not list(first_r.iter(qn('w:u'))):
+                            from docx.oxml import OxmlElement
+                            u_elem = OxmlElement('w:u')
+                            u_elem.set(qn('w:val'), 'single')  # 单下划线
+                            first_r.insert(0, u_elem)
     
     def _generate_excel(self, data):
         """生成 Excel 文档 - 保留格式"""
@@ -294,7 +341,12 @@ class DocumentGenerator:
         # 从后向前替换，避免位置变化
         for start, end, var_content in reversed(variables):
             var_clean = var_content.strip()
-            if var_clean in data:
+            # 同时尝试原始内容（保留空格）和清理后的内容
+            if var_content in data:
+                value = str(data[var_content])
+                text = text[:start] + value + text[end:]
+                print(f"替换: {{{var_content[:50]}...}} -> {value[:50]}...")
+            elif var_clean in data:
                 value = str(data[var_clean])
                 text = text[:start] + value + text[end:]
                 print(f"替换: {{{var_clean[:50]}...}} -> {value[:50]}...")
@@ -354,82 +406,102 @@ class DocumentGenerator:
         return date_str
     
     def _replace_in_paragraph(self, para, data):
-        """替换段落中的变量（Word）"""
+        """替换段落中的变量（Word）- 保留每个 run 的格式"""
         if not para.text:
             return
         
-        text = para.text
-        original_text = text
+        # 检查段落中是否包含变量
+        if '{' not in para.text or '}' not in para.text:
+            return
         
-        # 使用完整的替换逻辑
-        text = self._replace_text(text, data)
+        # 首先处理变量被分散在多个 runs 的情况
+        # 合并包含同一变量的相邻 runs
+        self._merge_runs_with_variables(para)
         
-        # 如果有替换，更新段落文本（保留格式）
-        if text != original_text:
-            # 确保所有 runs 合并后再替换（处理变量分散在多个 runs 的情况）
-            if len(para.runs) > 1:
-                # 合并所有 runs 的文本
-                full_text = ''.join(run.text for run in para.runs)
-                # 重新进行替换
-                new_text = self._replace_text(full_text, data)
-                if new_text != full_text:
-                    text = new_text
-            if para.runs:
-                # 分析段落中包含变量内容的 runs（包含 { 或 } 的 runs）
-                runs_with_vars = []
+        # 现在每个变量应该都在一个单独的 run 中
+        for run in para.runs:
+            if '{' in run.text and '}' in run.text:
+                original_text = run.text
+                new_text = self._replace_text(original_text, data)
+                if new_text != original_text:
+                    run.text = new_text
+                    # case_no 相关变量需要去除粗体
+                    if '{case_no' in original_text or '{case_no_raw' in original_text:
+                        run.bold = False
+    
+    def _merge_runs_with_variables(self, para):
+        """合并包含同一变量的相邻 runs"""
+        if len(para.runs) <= 1:
+            return
+        
+        # 收集完整文本并找到变量位置
+        full_text = ''.join(run.text or '' for run in para.runs)
+        
+        # 找出所有变量及其位置
+        variables = self._extract_variables_with_positions(full_text)
+        
+        if not variables:
+            return
+        
+        # 计算每个 run 的文本范围
+        run_ranges = []
+        pos = 0
+        for run in para.runs:
+            text_len = len(run.text or '')
+            run_ranges.append((pos, pos + text_len, run))
+            pos += text_len
+        
+        # 对于每个跨越多个 runs 的变量，合并这些 runs
+        for start, end, var_content in sorted(variables, key=lambda x: x[0], reverse=True):
+            # 找到包含这个变量的所有 runs
+            runs_to_merge = []
+            for run_start, run_end, run in run_ranges:
+                if run_start < end and run_end > start:
+                    runs_to_merge.append((run_start, run_end, run))
+            
+            if len(runs_to_merge) > 1:
+                # 需要合并这些 runs
+                # 使用第一个 run 的格式
+                first_run = runs_to_merge[0][2]
+                merged_text = ''.join(run.text or '' for _, _, run in runs_to_merge)
                 
-                for run in para.runs:
-                    run_text = run.text
-                    if run_text.strip():  # 忽略纯空白 runs
-                        if '{' in run_text or '}' in run_text:
-                            runs_with_vars.append(run)
+                # 设置第一个 run 的文本
+                first_run.text = merged_text
                 
-                # 判断是否应该加粗：
-                # 只有当变量所在的 runs 明确设置为加粗时才加粗
-                # 否则（包括 None 或 False）都不加粗
-                if runs_with_vars:
-                    # 检查是否有任何变量 run 明确设置为加粗
-                    any_var_bold_true = any(run.font.bold is True for run in runs_with_vars)
-                    # 检查是否所有变量 runs 都明确设置为非加粗
-                    all_var_bold_false = all(run.font.bold is False for run in runs_with_vars)
-                    
-                    if any_var_bold_true:
-                        target_bold = True
-                    elif all_var_bold_false:
-                        target_bold = False
-                    else:
-                        # 有 None 的情况（未明确设置），默认不加粗
-                        target_bold = False
+                # 清空其他 runs
+                for _, _, run in runs_to_merge[1:]:
+                    run.text = ''
+        
+        # 清理空 runs（可选，保持段落整洁）
+        # 注意：这里我们不能真正删除 runs，只能清空它们
+    
+    def _extract_variables_with_positions(self, text):
+        """提取文本中的所有变量及其位置，支持嵌套的{}"""
+        variables = []
+        i = 0
+        while i < len(text):
+            if text[i] == '{':
+                # 找到匹配的}
+                count = 1
+                j = i + 1
+                while j < len(text) and count > 0:
+                    if text[j] == '{':
+                        count += 1
+                    elif text[j] == '}':
+                        count -= 1
+                    j += 1
+                
+                if count == 0:
+                    # 找到完整的变量
+                    var_content = text[i+1:j-1]
+                    variables.append((i, j, var_content))
+                    i = j
                 else:
-                    # 没有识别到变量 runs，使用第一个 run 的格式（向后兼容）
-                    first_run = para.runs[0]
-                    target_bold = first_run.font.bold if first_run.font.bold is not None else False
-                
-                # 获取其他格式属性（使用第一个 run）
-                first_run = para.runs[0]
-                font_name = first_run.font.name
-                font_size = first_run.font.size
-                italic = first_run.font.italic
-                underline = first_run.font.underline
-                
-                # 清除所有 runs
-                for run in para.runs[1:]:
-                    run._element.getparent().remove(run._element)
-                
-                # 设置新文本
-                para.runs[0].text = text
-                
-                # 恢复格式
-                if font_name:
-                    para.runs[0].font.name = font_name
-                if font_size:
-                    para.runs[0].font.size = font_size
-                # 明确设置加粗或不加粗
-                para.runs[0].font.bold = target_bold
-                if italic is not None:
-                    para.runs[0].font.italic = italic
-                if underline is not None:
-                    para.runs[0].font.underline = underline
+                    i += 1
+            else:
+                i += 1
+        
+        return variables
     
     def _get_field(self, data, primary_key, fallback_keys=None, default=''):
         """
@@ -484,8 +556,8 @@ class DocumentGenerator:
         # 保存原始案号（保留方括号 [] 格式，用于立案审批表）
         result['case_no_raw'] = case_no_raw
         
-        # 将方括号 [] 替换为圆括号 ()，用于其他文书
-        case_no = case_no_raw.replace('[', '（').replace(']', '）')
+        # 使用方括号 [] 格式
+        case_no = case_no_raw
         result['case_no'] = case_no
         result['applicant'] = case_data.get('applicant', '')
         # 处理带空格的变量 { applicant}
@@ -715,12 +787,62 @@ class DocumentGenerator:
                 dt = datetime.strptime(handle_at.split()[0], '%Y-%m-%d')
                 result['handle_at_chinese'] = self._get_chinese_date(dt)
                 result['中文_handle_at'] = self._get_chinese_date(dt)
+                # 年月日格式 (2026年3月5日)
+                result['年月日_handle_at'] = f"{dt.year}年{dt.month}月{dt.day}日"
             except:
                 result['handle_at_chinese'] = handle_at
                 result['中文_handle_at'] = handle_at
+                result['年月日_handle_at'] = handle_at
         else:
             result['handle_at_chinese'] = ''
             result['中文_handle_at'] = ''
+            result['年月日_handle_at'] = ''
+        
+        # 8.1 申请日期格式化
+        apply_at = case_data.get('apply_at', '')
+        if apply_at:
+            try:
+                dt = datetime.strptime(apply_at.split()[0], '%Y-%m-%d')
+                result['中文_apply_at'] = self._get_chinese_date(dt)
+                # 年月日格式 (2026年3月1日)
+                result['年月日_apply_at'] = f"{dt.year}年{dt.month}月{dt.day}日"
+            except:
+                result['中文_apply_at'] = apply_at
+                result['年月日_apply_at'] = apply_at
+        else:
+            result['中文_apply_at'] = ''
+            result['年月日_apply_at'] = ''
+        
+        # 9. 开庭信息（从 tribunal_plan 最后一个元素提取）
+        result['open'] = self._get_open_date_time(case_data)
+        
+        # 10. 开庭电话（从 tribunal_plan 最后一个元素提取 tel）
+        result['tel'] = self._get_tribunal_tel(case_data)
+        
+        # 11. 开庭创建日期（从 tribunal_plan 最后一个元素提取 created_at，格式化为中文日期）
+        tribunal_plan = case_data.get('tribunal_plan', [])
+        if tribunal_plan and isinstance(tribunal_plan, list):
+            last_plan = tribunal_plan[-1]
+            if isinstance(last_plan, dict):
+                create_at = last_plan.get('created_at', '')
+                if create_at:
+                    try:
+                        dt = datetime.strptime(create_at.split()[0], '%Y-%m-%d')
+                        chinese_date = self._get_chinese_date(dt)
+                        result['年月日_create_at'] = chinese_date
+                        result['年月日_created_at'] = chinese_date  # 兼容带 d 的写法
+                    except:
+                        result['年月日_create_at'] = create_at
+                        result['年月日_created_at'] = create_at  # 兼容带 d 的写法
+                else:
+                    result['年月日_create_at'] = ''
+                    result['年月日_created_at'] = ''  # 兼容带 d 的写法
+            else:
+                result['年月日_create_at'] = ''
+                result['年月日_created_at'] = ''  # 兼容带 d 的写法
+        else:
+            result['年月日_create_at'] = ''
+            result['年月日_created_at'] = ''  # 兼容带 d 的写法
         
         return result
     
@@ -773,6 +895,80 @@ class DocumentGenerator:
             day_str = '三十一'
         
         return f"{year_str}年{month_str}月{day_str}日"
+    
+    def _get_open_date_time(self, case_data):
+        """
+        获取开庭日期时间格式：2026年3月11日（星期三）上午9时
+        从 tribunal_plan 最后一个元素提取 open_at 和 text 字段
+        """
+        tribunal_plan = case_data.get('tribunal_plan', [])
+        if not tribunal_plan or not isinstance(tribunal_plan, list):
+            return ''
+        
+        # 获取最后一个元素
+        last_plan = tribunal_plan[-1]
+        if not isinstance(last_plan, dict):
+            return ''
+        
+        open_at = last_plan.get('open_at', '')
+        text = last_plan.get('text', '')
+        
+        if not open_at:
+            return ''
+        
+        try:
+            # 解析 open_at (如: 2026-03-11)
+            dt = datetime.strptime(open_at.split()[0], '%Y-%m-%d')
+            
+            # 获取星期几
+            weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+            weekday = weekdays[dt.weekday()]
+            
+            # 从 text 提取小时 (如: "3月11日09时第1次公开开庭" -> 09)
+            hour = None
+            if text:
+                # 匹配 "XX时" 格式
+                hour_match = re.search(r'(\d{1,2})时', text)
+                if hour_match:
+                    hour = int(hour_match.group(1))
+            
+            # 格式化时间描述
+            if hour is not None:
+                # 判断上午/下午
+                if hour < 12:
+                    am_pm = '上午'
+                elif hour == 12:
+                    am_pm = '中午'
+                else:
+                    am_pm = '下午'
+                    hour = hour - 12 if hour > 12 else hour
+                time_str = f"{am_pm}{hour}时"
+            else:
+                time_str = ''
+            
+            # 组合结果: 2026年3月11日（星期三）上午9时
+            if time_str:
+                return f"{dt.year}年{dt.month}月{dt.day}日（{weekday}）{time_str}"
+            else:
+                return f"{dt.year}年{dt.month}月{dt.day}日（{weekday}）"
+        except Exception as e:
+            print(f"解析开庭日期失败: {e}, open_at={open_at}, text={text}")
+            return open_at
+    
+    def _get_tribunal_tel(self, case_data):
+        """
+        获取开庭电话（从 tribunal_plan 最后一个元素提取 tel 字段）
+        """
+        tribunal_plan = case_data.get('tribunal_plan', [])
+        if not tribunal_plan or not isinstance(tribunal_plan, list):
+            return ''
+        
+        # 获取最后一个元素
+        last_plan = tribunal_plan[-1]
+        if not isinstance(last_plan, dict):
+            return ''
+        
+        return last_plan.get('tel', '')
 
 
 def generate_document(template_name, output_name, case_id):
