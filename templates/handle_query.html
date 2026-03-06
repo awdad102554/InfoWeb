@@ -1071,9 +1071,11 @@
         function requiresApplicantSelection(filePath, fileName) {
             // 检查路径是否包含"5-撤诉文书"
             const isWithdrawalDoc = filePath.includes('5-撤诉文书');
-            // 检查文件名是否以"0"开头
-            const startsWithZero = fileName && fileName.startsWith('0');
-            return isWithdrawalDoc && startsWithZero;
+            // 检查文件名是否是特定的两个文件之一
+            // 去掉扩展名后进行比较
+            const nameWithoutExt = fileName ? fileName.replace(/\.[^/.]+$/, '') : '';
+            const isTargetFile = nameWithoutExt === '0申请人调查笔录' || nameWithoutExt === '0仲裁决定书';
+            return isWithdrawalDoc && isTargetFile;
         }
         
         // 显示申请人选择对话框
@@ -1220,21 +1222,28 @@
             // 检查是否需要选择申请人
             if (requiresApplicantSelection(filePath, fileName)) {
                 showApplicantSelector(selectedLevel3, function(selectedApplicants) {
-                    // 为每个选中的申请人添加一份文件
-                    selectedApplicants.forEach(app => {
-                        const fileWithApplicant = {
-                            ...selectedLevel3,
-                            displayName: `${selectedLevel3.displayName} (${app.name})`,
-                            applicantName: app.name,
-                            applicantId: app.id,
-                            uniqueId: `${selectedLevel3.path}#${app.id || app.name}`
-                        };
-                        
-                        // 检查是否已存在
-                        if (!selectedFiles.some(f => f.uniqueId === fileWithApplicant.uniqueId)) {
-                            selectedFiles.push(fileWithApplicant);
-                        }
-                    });
+                    // 多选申请人，但只生成一份文书，包含所有选中申请人的信息
+                    const applicantNames = selectedApplicants.map(app => app.name);
+                    const applicantIds = selectedApplicants.map(app => app.id);
+                    
+                    const fileWithApplicants = {
+                        ...selectedLevel3,
+                        displayName: `${selectedLevel3.displayName} (${applicantNames.join('、')})`,
+                        applicantNames: applicantNames,  // 多个申请人姓名列表
+                        applicantIds: applicantIds,      // 多个申请人ID列表
+                        applicantName: applicantNames.join('、'),  // 兼容旧版本
+                        uniqueId: `${selectedLevel3.path}#${applicantNames.join(',')}`
+                    };
+                    
+                    // 检查是否已存在（同一文件路径）
+                    const existingIndex = selectedFiles.findIndex(f => f.path === selectedLevel3.path);
+                    if (existingIndex >= 0) {
+                        // 替换已存在的
+                        selectedFiles[existingIndex] = fileWithApplicants;
+                    } else {
+                        selectedFiles.push(fileWithApplicants);
+                    }
+                    
                     updateSelectedFilesList();
                     updatePreview();
                     updateAddButton();
@@ -1389,11 +1398,11 @@
                 const requestData = {
                     template_paths: selectedFiles.map(f => f.path),
                     case_id: caseId,
-                    // 添加文件与申请人的映射关系
+                    // 添加文件与申请人的映射关系（支持多申请人）
                     file_applicant_map: selectedFiles.map(f => ({
                         path: f.path,
-                        applicant_name: f.applicantName || null,
-                        applicant_id: f.applicantId || null
+                        applicant_names: f.applicantNames || (f.applicantName ? [f.applicantName] : null),
+                        applicant_ids: f.applicantIds || (f.applicantId ? [f.applicantId] : null)
                     }))
                 };
                 console.log('生成文档请求:', requestData);

@@ -28,7 +28,9 @@ class BatchDocumentGenerator:
             template_paths: 模板路径列表
             case_data: 案件数据（原始API返回数据）
             case_no: 案件编号（用于文件名）
-            file_applicant_map: 文件与申请人的映射列表，格式: [{path, applicant_name, applicant_id}, ...]
+            file_applicant_map: 文件与申请人的映射列表，格式: [{path, applicant_names, applicant_ids}, ...]
+                           applicant_names: 申请人姓名列表（多选）
+                           applicant_ids: 申请人ID列表（多选）
         
         Returns:
             dict: {
@@ -37,15 +39,19 @@ class BatchDocumentGenerator:
         """
         generated_files = []
         
-        # 构建文件路径到申请人信息的映射
+        # 构建文件路径到申请人信息的映射（支持多申请人）
         applicant_map = {}
         if file_applicant_map:
             for item in file_applicant_map:
                 path = item.get('path', '')
-                applicant_name = item.get('applicant_name')
-                applicant_id = item.get('applicant_id')
-                if path and applicant_name:
-                    applicant_map[path] = {'name': applicant_name, 'id': applicant_id}
+                applicant_names = item.get('applicant_names') or item.get('applicant_name')
+                applicant_ids = item.get('applicant_ids') or item.get('applicant_id')
+                
+                # 兼容单申请人和多申请人格式
+                if applicant_names:
+                    if isinstance(applicant_names, str):
+                        applicant_names = [applicant_names]
+                    applicant_map[path] = {'names': applicant_names, 'ids': applicant_ids}
         
         # 为每个模板生成独立文件
         for template_path in template_paths:
@@ -56,18 +62,25 @@ class BatchDocumentGenerator:
             
             # 检查是否有特定的申请人信息
             applicant_info = applicant_map.get(template_path)
-            target_applicant = applicant_info['name'] if applicant_info else None
+            target_applicants = applicant_info['names'] if applicant_info else None
             
-            # 生成输出文件名（如果有申请人信息，添加到文件名）
-            output_filename = self._generate_output_filename(case_no, template_path, target_applicant)
+            # 生成输出文件名（如果有申请人信息，显示人数）
+            applicant_label = None
+            if target_applicants:
+                if len(target_applicants) == 1:
+                    applicant_label = target_applicants[0]
+                else:
+                    applicant_label = f"{len(target_applicants)}人"
+            
+            output_filename = self._generate_output_filename(case_no, template_path, applicant_label)
             output_path = os.path.join(self.doc_templates_dir, 'output', output_filename)
             
             # 确保输出目录存在
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # 使用 DocumentGenerator 生成（如果有特定申请人，传递该信息）
+            # 使用 DocumentGenerator 生成（传递多个申请人信息）
             generator = DocumentGenerator(full_path, output_path)
-            generator.generate(case_data, target_applicant=target_applicant)
+            generator.generate(case_data, target_applicants=target_applicants)
             
             generated_files.append(output_path)
             print(f"生成: {output_filename}")

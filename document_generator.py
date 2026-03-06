@@ -19,14 +19,19 @@ class DocumentGenerator:
         self.output_path = output_path
         self.file_ext = os.path.splitext(template_path)[1].lower()
         
-    def generate(self, data, target_applicant=None):
+    def generate(self, data, target_applicant=None, target_applicants=None):
         """
         根据数据填充模板
         data: 立案详情API返回的数据
-        target_applicant: 目标申请人姓名（可选，如果指定则只生成该申请人的文书）
+        target_applicant: 目标申请人姓名（可选，如果指定则只生成该申请人的文书）- 单个申请人，已废弃，请使用 target_applicants
+        target_applicants: 目标申请人姓名列表（可选，如果指定则只使用这些申请人的信息填充）- 支持多申请人
         """
+        # 兼容旧版本：如果传了 target_applicant 但没传 target_applicants
+        if target_applicant and not target_applicants:
+            target_applicants = [target_applicant]
+        
         # 预处理数据 - 将复杂表达式转换为简单变量
-        processed_data = self._preprocess_data(data, target_applicant=target_applicant)
+        processed_data = self._preprocess_data(data, target_applicants=target_applicants)
         
         print(f"预处理后的数据: {processed_data}")
         
@@ -534,15 +539,20 @@ class DocumentGenerator:
         
         return default
     
-    def _preprocess_data(self, data, target_applicant=None):
+    def _preprocess_data(self, data, target_applicant=None, target_applicants=None):
         """
         预处理数据，计算所有变量值
         
         Args:
             data: 案件数据
-            target_applicant: 目标申请人姓名（可选）
+            target_applicant: 目标申请人姓名（可选，单个）- 已废弃，请使用 target_applicants
+            target_applicants: 目标申请人姓名列表（可选，支持多申请人）
         """
         result = {}
+        
+        # 兼容旧版本
+        if target_applicant and not target_applicants:
+            target_applicants = [target_applicant]
         
         # 获取案件数据（处理嵌套结构）
         # 尝试多种可能的数据结构
@@ -553,7 +563,7 @@ class DocumentGenerator:
                 case_data = case_data['data']
         
         print(f"案件数据 keys: {case_data.keys() if hasattr(case_data, 'keys') else 'N/A'}")
-        print(f"目标申请人: {target_applicant}")
+        print(f"目标申请人列表: {target_applicants}")
         
         # 1. 基础字段
         case_no_raw = case_data.get('case_no', '')
@@ -598,59 +608,50 @@ class DocumentGenerator:
         
         # 2. 申请人信息
         applicant_arr = case_data.get('applicant_arr', [])
-        print(f"申请人数量: {len(applicant_arr)}")
+        print(f"申请人总数: {len(applicant_arr)}")
         
-        # 如果指定了目标申请人，查找该申请人
-        target_applicant_data = None
-        if target_applicant and applicant_arr:
+        # 如果指定了目标申请人列表，筛选出这些申请人
+        selected_applicants = []
+        if target_applicants and applicant_arr:
             for app in applicant_arr:
                 app_name = app.get('name', '') or app.get('applicant_name', '')
-                if app_name == target_applicant:
-                    target_applicant_data = app
+                if app_name in target_applicants:
+                    selected_applicants.append(app)
                     print(f"找到目标申请人: {app_name}")
-                    break
+            # 如果找不到任何匹配的申请人，使用第一个作为默认
+            if not selected_applicants and applicant_arr:
+                selected_applicants = [applicant_arr[0]]
+                print(f"未找到匹配申请人，使用第一个: {selected_applicants[0].get('name', '')}")
+        elif applicant_arr:
+            # 没有指定目标申请人，使用所有申请人
+            selected_applicants = applicant_arr
+            print(f"未指定目标申请人，使用所有申请人")
         
-        if applicant_arr and len(applicant_arr) > 0:
-            # 如果有目标申请人则使用目标申请人，否则使用第一个申请人
-            first_applicant = target_applicant_data if target_applicant_data else applicant_arr[0]
-            print(f"使用的申请人 keys: {list(first_applicant.keys()) if isinstance(first_applicant, dict) else 'N/A'}")
+        print(f"选中的申请人数量: {len(selected_applicants)}")
+        
+        # 填充申请人信息到 applicant_arr[i] 变量
+        for idx, applicant in enumerate(selected_applicants):
+            print(f"处理第 {idx+1} 个申请人: {applicant.get('name', '')}")
             
-            result['registered_permanent_residence'] = self._get_field(first_applicant, 'registered_permanent_residence')
-            result['applicant_name'] = self._get_field(first_applicant, 'name')
-            result['applicant_mobile'] = self._get_field(first_applicant, 'mobile', ['phone', 'tel', 'telephone'])
-            result['applicant_id_number'] = self._get_field(first_applicant, 'id_number')
-            # 数组形式访问
-            result['applicant_arr[0].name'] = self._get_field(first_applicant, 'name')
-            result['applicant_arr[0].mobile'] = self._get_field(first_applicant, 'mobile', ['phone', 'tel', 'telephone'])
-            result['applicant_arr[0].id_number'] = self._get_field(first_applicant, 'id_number')
-            result['applicant_arr[0].address'] = self._get_field(first_applicant, 'registered_permanent_residence', ['address'])
-            result['applicant_arr[0].registered_permanent_residence'] = self._get_field(first_applicant, 'registered_permanent_residence')
+            # 基础信息
+            result[f'applicant_arr[{idx}].name'] = self._get_field(applicant, 'name')
+            result[f'applicant_arr[{idx}].mobile'] = self._get_field(applicant, 'mobile', ['phone', 'tel', 'telephone'])
+            result[f'applicant_arr[{idx}].id_number'] = self._get_field(applicant, 'id_number')
+            result[f'applicant_arr[{idx}].address'] = self._get_field(applicant, 'registered_permanent_residence', ['address'])
+            result[f'applicant_arr[{idx}].registered_permanent_residence'] = self._get_field(applicant, 'registered_permanent_residence')
             
             # 申请人代理人信息
-            agents = first_applicant.get('agents', [])
-            print(f"第一个申请人代理人数量: {len(agents)}")
-            
+            agents = applicant.get('agents', [])
             if agents and len(agents) > 0:
                 first_agent = agents[0]
-                print(f"第一个申请人第一个代理人 keys: {list(first_agent.keys()) if isinstance(first_agent, dict) else 'N/A'}")
-                
-                result['applicant_arr[0].agents[0].name'] = self._get_field(first_agent, 'name')
-                result['applicant_arr[0].agents[0].mobile'] = self._get_field(first_agent, 'mobile', ['phone', 'tel', 'telephone'])
-                result['applicant_agent_name'] = self._get_field(first_agent, 'name')
-                result['applicant_agent_mobile'] = self._get_field(first_agent, 'mobile', ['phone', 'tel', 'telephone'])
-                
-                print(f"applicant_arr[0].agents[0].mobile 赋值: '{result['applicant_arr[0].agents[0].mobile']}'")
+                result[f'applicant_arr[{idx}].agents[0].name'] = self._get_field(first_agent, 'name')
+                result[f'applicant_arr[{idx}].agents[0].mobile'] = self._get_field(first_agent, 'mobile', ['phone', 'tel', 'telephone'])
             else:
-                result['applicant_arr[0].agents[0].name'] = ''
-                result['applicant_arr[0].agents[0].mobile'] = ''
-                result['applicant_agent_name'] = ''
-                result['applicant_agent_mobile'] = ''
-                print("applicant_arr[0].agents[0].mobile 赋值为空字符串（无代理人）")
-        else:
-            result['registered_permanent_residence'] = ''
-            result['applicant_name'] = ''
-            result['applicant_mobile'] = ''
-            result['applicant_id_number'] = ''
+                result[f'applicant_arr[{idx}].agents[0].name'] = ''
+                result[f'applicant_arr[{idx}].agents[0].mobile'] = ''
+        
+        # 兼容旧版本：如果没有选中任何申请人，填充空值
+        if not selected_applicants:
             result['applicant_arr[0].name'] = ''
             result['applicant_arr[0].mobile'] = ''
             result['applicant_arr[0].id_number'] = ''
@@ -658,9 +659,61 @@ class DocumentGenerator:
             result['applicant_arr[0].registered_permanent_residence'] = ''
             result['applicant_arr[0].agents[0].name'] = ''
             result['applicant_arr[0].agents[0].mobile'] = ''
+            result['registered_permanent_residence'] = ''
+            result['applicant_name'] = ''
+            result['applicant_mobile'] = ''
+            result['applicant_id_number'] = ''
             result['applicant_agent_name'] = ''
             result['applicant_agent_mobile'] = ''
-            print("applicant_arr[0].agents[0].mobile 赋值为空字符串（无申请人）")
+            print("无申请人信息")
+        else:
+            # 第一个申请人的信息也填充到旧版本变量中（兼容）
+            first_applicant = selected_applicants[0]
+            result['registered_permanent_residence'] = self._get_field(first_applicant, 'registered_permanent_residence')
+            result['applicant_name'] = self._get_field(first_applicant, 'name')
+            result['applicant_mobile'] = self._get_field(first_applicant, 'mobile', ['phone', 'tel', 'telephone'])
+            result['applicant_id_number'] = self._get_field(first_applicant, 'id_number')
+            
+            agents = first_applicant.get('agents', [])
+            if agents and len(agents) > 0:
+                first_agent = agents[0]
+                result['applicant_agent_name'] = self._get_field(first_agent, 'name')
+                result['applicant_agent_mobile'] = self._get_field(first_agent, 'mobile', ['phone', 'tel', 'telephone'])
+            else:
+                result['applicant_agent_name'] = ''
+                result['applicant_agent_mobile'] = ''
+        
+        # 2.1 生成选中申请人的信息字符串 {a_str}
+        # 格式: 申请人N：姓名，性别，民族，出生日期出生，身份证住址。公民身份号码：身份证号。
+        # 注意：除第一个申请人外，前面加两个全角空格模拟首行缩进
+        if selected_applicants:
+            applicant_str_parts = []
+            for idx, applicant in enumerate(selected_applicants):
+                name = self._get_field(applicant, 'name')
+                sex = self._get_field(applicant, 'sex')
+                nation = self._get_field(applicant, 'nation')
+                birth = self._get_field(applicant, 'birth')
+                residence = self._get_field(applicant, 'registered_permanent_residence')
+                id_number = self._get_field(applicant, 'id_number')
+                
+                # 格式化出生日期: 2004-07-08 -> 2004年7月8日
+                birth_formatted = birth
+                if birth and len(birth) >= 10:
+                    try:
+                        birth_dt = datetime.strptime(birth.split()[0], '%Y-%m-%d')
+                        birth_formatted = f"{birth_dt.year}年{birth_dt.month}月{birth_dt.day}日"
+                    except:
+                        birth_formatted = birth
+                
+                # 构建单个申请人信息字符串
+                # 除第一个申请人外，前面加两个全角空格（　）模拟首行缩进
+                indent = '' if idx == 0 else '　　'
+                part = f"{indent}申请人{idx + 1}：{name}，{sex}，{nation}，{birth_formatted}出生，身份证住址：{residence}。公民身份号码：{id_number}。"
+                applicant_str_parts.append(part)
+            
+            result['a_str'] = '\n'.join(applicant_str_parts)
+        else:
+            result['a_str'] = ''
         
         # 3. 被申请人信息（支持多个）
         respondent_arr = case_data.get('respondent_arr', [])
@@ -726,6 +779,31 @@ class DocumentGenerator:
             result['respondent_agent_name'] = ''
             result['respondent_agent_mobile'] = ''
             print("respondent_arr[0].legal_mobile 和 respondent_arr[0].agents[0].mobile 赋值为空字符串（无被申请人）")
+        
+        # 3.1 生成被申请人信息字符串 {r_str}
+        # 格式: 
+        # 被申请人：XXX，统一社会信用代码: XXX，住所：XXX。
+        # 　　法定代表人：XXX，职务。
+        if respondent_arr and len(respondent_arr) > 0:
+            first_respondent = respondent_arr[0]
+            r_name = self._get_field(first_respondent, 'name')
+            r_social_code = self._get_field(first_respondent, 'social_code')
+            r_address = self._get_field(first_respondent, 'company_address', ['address'])
+            r_legal_name = self._get_field(first_respondent, 'legal_name')
+            # 尝试获取职务，可能字段名为 duty, position, legal_duty 等
+            r_duty = self._get_field(first_respondent, 'duty', ['position', 'legal_duty', 'legal_position', 'job', 'title'])
+            
+            # 第一行：被申请人基本信息
+            line1 = f"被申请人：{r_name}，统一社会信用代码: {r_social_code}，住所：{r_address}。"
+            # 第二行：法定代表人信息（前面加两个全角空格模拟缩进）
+            if r_duty:
+                line2 = f"　　法定代表人：{r_legal_name}，{r_duty}。"
+            else:
+                line2 = f"　　法定代表人：{r_legal_name}。"
+            
+            result['r_str'] = f"{line1}\n{line2}"
+        else:
+            result['r_str'] = ''
         
         # 第二个被申请人（如果存在）
         if respondent_arr and len(respondent_arr) > 1:
