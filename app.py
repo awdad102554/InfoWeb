@@ -2009,6 +2009,7 @@ def generate_document():
         template_path = params.get('template_path', '')
         template_paths = params.get('template_paths', [])
         case_id = params.get('case_id', '')
+        file_applicant_map = params.get('file_applicant_map', [])  # 文件与申请人的映射关系
         
         # 兼容单文件模式
         if template_path and not template_paths:
@@ -2110,7 +2111,7 @@ def generate_document():
         # 批量生成文档
         from batch_document_generator import BatchDocumentGenerator
         generator = BatchDocumentGenerator(DOC_TEMPLATES_DIR)
-        result = generator.generate_batch(valid_paths, case_data, case_no)
+        result = generator.generate_batch(valid_paths, case_data, case_no, file_applicant_map=file_applicant_map)
         
         logger.info(f"批量文档生成成功: {result}")
         

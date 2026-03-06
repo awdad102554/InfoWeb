@@ -790,6 +790,7 @@
         let selectedFile = null;   // 最终选中的文件
         let currentCaseId = null;  // 当前案件ID
         let currentCaseNo = '';    // 当前案件编号
+        let currentApplicants = []; // 当前案件的申请人列表
 
         // 打开生成弹窗
         async function openGenerateModal(caseId, caseNo) {
@@ -803,11 +804,185 @@
             selectedLevel1 = null;
             selectedLevel2 = null;
             selectedFile = null;
+            currentApplicants = [];
             updateSelectedPath();
+            
+            // 加载案件详情获取申请人信息
+            await loadCaseApplicants(caseId);
             
             // 加载模板树
             await loadDocTemplatesTree();
         }
+        
+        // 加载案件申请人信息
+        async function loadCaseApplicants(caseId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/receive/detail?id=${caseId}`);
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data) {
+                    // 处理嵌套结构
+                    let data = result.data.data;
+                    if (data && data.data) {
+                        data = data.data;
+                    }
+                    
+                    // 获取申请人列表
+                    const applicants = data.applicant || [];
+                    currentApplicants = applicants.map(app => ({
+                        id: app.id || '',
+                        name: app.name || app.applicant_name || '',
+                        selected: false
+                    })).filter(app => app.name);
+                }
+            } catch (error) {
+                console.error('加载申请人信息失败:', error);
+                currentApplicants = [];
+            }
+        }
+        
+        // 检查文件是否需要选择申请人
+        function requiresApplicantSelection(filePath, fileName) {
+            // 检查路径是否包含"5-撤诉文书"
+            const isWithdrawalDoc = filePath.includes('5-撤诉文书');
+            // 检查文件名是否以"0"开头
+            const startsWithZero = fileName && fileName.startsWith('0');
+            return isWithdrawalDoc && startsWithZero;
+        }
+        
+        // 显示申请人选择对话框
+        function showApplicantSelector(callback) {
+            // 检查是否有可用的申请人
+            if (currentApplicants.length === 0) {
+                alert('未能获取到申请人信息，请检查案件数据');
+                return;
+            }
+            
+            // 创建对话框容器
+            const modal = document.createElement('div');
+            modal.id = 'applicantSelectorModal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4';
+            
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col">
+                    <div class="bg-gradient-to-r from-green-600 to-green-800 text-white px-6 py-4 rounded-t-xl flex justify-between items-center">
+                        <div>
+                            <h3 class="text-lg font-bold"><i class="fas fa-user-check mr-2"></i>选择申请人</h3>
+                            <p class="text-sm opacity-90 mt-1">${selectedFile ? selectedFile.displayName : ''}</p>
+                        </div>
+                        <button onclick="closeApplicantSelector()" class="text-white hover:text-gray-200 text-2xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="p-6 flex-1 overflow-hidden flex flex-col">
+                        <p class="text-gray-600 text-sm mb-3">请选择需要生成文书的申请人（至少选择一位）：</p>
+                        <div class="flex-1 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                            ${currentApplicants.map((app, index) => `
+                                <div class="applicant-option flex items-center p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="toggleApplicantSelection(${index})">
+                                    <input type="checkbox" id="applicant-check-${index}" class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer" 
+                                        onchange="updateSelectAllState()">
+                                    <label for="applicant-check-${index}" class="ml-3 flex-1 cursor-pointer">
+                                        <span class="font-medium text-gray-800">${app.name}</span>
+                                    </label>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mt-3 flex items-center justify-between">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="selectAllApplicants" class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" onchange="toggleSelectAllApplicants()">
+                                <span class="ml-2 text-sm text-gray-700">全选</span>
+                            </label>
+                            <span id="selectedCountDisplay" class="text-sm text-gray-500">已选择 0 位</span>
+                        </div>
+                    </div>
+                    <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                        <button onclick="closeApplicantSelector()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                            取消
+                        </button>
+                        <button onclick="confirmApplicantSelection()" id="confirmApplicantBtn" disabled
+                            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-check mr-2"></i>确认选择
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // 点击外部关闭
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeApplicantSelector();
+                }
+            });
+            
+            // 保存回调函数
+            window.applicantSelectorCallback = callback;
+        }
+        
+        // 关闭申请人选择对话框
+        window.closeApplicantSelector = function() {
+            const modal = document.getElementById('applicantSelectorModal');
+            if (modal) {
+                modal.remove();
+            }
+            delete window.applicantSelectorCallback;
+        };
+        
+        // 切换申请人选择
+        window.toggleApplicantSelection = function(index) {
+            const checkbox = document.getElementById(`applicant-check-${index}`);
+            checkbox.checked = !checkbox.checked;
+            updateSelectAllState();
+        };
+        
+        // 切换全选
+        window.toggleSelectAllApplicants = function() {
+            const selectAllCheckbox = document.getElementById('selectAllApplicants');
+            const checkboxes = document.querySelectorAll('[id^="applicant-check-"]');
+            checkboxes.forEach(cb => {
+                cb.checked = selectAllCheckbox.checked;
+            });
+            updateSelectAllState();
+        };
+        
+        // 更新全选状态
+        window.updateSelectAllState = function() {
+            const checkboxes = document.querySelectorAll('[id^="applicant-check-"]');
+            const checkedBoxes = document.querySelectorAll('[id^="applicant-check-"]:checked');
+            const selectAllCheckbox = document.getElementById('selectAllApplicants');
+            
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = checkboxes.length > 0 && checkboxes.length === checkedBoxes.length;
+            }
+            
+            const confirmBtn = document.getElementById('confirmApplicantBtn');
+            if (confirmBtn) {
+                confirmBtn.disabled = checkedBoxes.length === 0;
+            }
+            
+            const countDisplay = document.getElementById('selectedCountDisplay');
+            if (countDisplay) {
+                countDisplay.textContent = `已选择 ${checkedBoxes.length} 位`;
+            }
+        };
+        
+        // 确认申请人选择
+        window.confirmApplicantSelection = function() {
+            const checkboxes = document.querySelectorAll('[id^="applicant-check-"]:checked');
+            const selectedApplicants = [];
+            checkboxes.forEach(cb => {
+                const index = parseInt(cb.id.replace('applicant-check-', ''));
+                if (currentApplicants[index]) {
+                    selectedApplicants.push(currentApplicants[index]);
+                }
+            });
+            
+            if (selectedApplicants.length > 0 && window.applicantSelectorCallback) {
+                window.applicantSelectorCallback(selectedApplicants);
+            }
+            closeApplicantSelector();
+        };
 
         // 关闭生成弹窗
         function closeGenerateModal() {
@@ -959,14 +1134,19 @@
             container.innerHTML = files.map((item, index) => {
                 const isSelected = selectedFile && selectedFile.path === item.path;
                 const extIcon = getFileIcon(item.ext);
+                // 检查文件是否需要选择申请人
+                const needsApplicant = requiresApplicantSelection(item.path, item.displayName);
                 
                 return `
                 <div onclick="selectLevel3(${index})" 
                     class="level3-item cursor-pointer px-3 py-2 rounded-lg hover:bg-green-50 transition mb-1 ${isSelected ? 'bg-green-100 border border-green-300' : ''}"
                     data-index="${index}">
-                    <div class="flex items-center">
-                        <i class="fas ${extIcon} ${isSelected ? 'text-green-600' : 'text-blue-500'} mr-2"></i>
-                        <span class="text-sm ${isSelected ? 'font-medium text-green-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <i class="fas ${extIcon} ${isSelected ? 'text-green-600' : 'text-blue-500'} mr-2"></i>
+                            <span class="text-sm ${isSelected ? 'font-medium text-green-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
+                            ${needsApplicant ? '<span class="ml-1 px-1 py-0.5 bg-orange-100 text-orange-600 text-xs rounded" title="需要选择申请人">需选人</span>' : ''}
+                        </div>
                     </div>
                 </div>
             `;
@@ -1034,19 +1214,105 @@
                 return;
             }
             
-            // 构建下载URL
-            const downloadUrl = `${API_BASE_URL}/doc_templates/download?path=${encodeURIComponent(selectedFile.path)}`;
+            // 检查是否需要选择申请人
+            if (requiresApplicantSelection(selectedFile.path, selectedFile.displayName)) {
+                showApplicantSelector(function(selectedApplicants) {
+                    // 为每个选中的申请人生成文件
+                    generateForApplicants(selectedApplicants);
+                });
+                return;
+            }
             
-            // 创建临时链接并点击下载
+            // 不需要选择申请人的，直接下载原始文件
+            downloadTemplateFile(selectedFile.path, selectedFile.name);
+            closeGenerateModal();
+        }
+        
+        // 下载模板文件
+        function downloadTemplateFile(path, filename) {
+            const downloadUrl = `${API_BASE_URL}/doc_templates/download?path=${encodeURIComponent(path)}`;
             const link = document.createElement('a');
             link.href = downloadUrl;
-            link.download = selectedFile.name;
+            link.download = filename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        }
+        
+        // 为选中的申请人批量生成文档
+        async function generateForApplicants(applicants) {
+            if (!currentCaseId || applicants.length === 0) return;
             
-            // 关闭弹窗
-            closeGenerateModal();
+            const btn = document.getElementById('confirmGenerateBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>生成中...';
+            btn.disabled = true;
+            
+            try {
+                // 准备请求数据
+                const requestData = {
+                    template_paths: [selectedFile.path],
+                    case_id: currentCaseId,
+                    file_applicant_map: applicants.map(app => ({
+                        path: selectedFile.path,
+                        applicant_name: app.name,
+                        applicant_id: app.id
+                    }))
+                };
+                
+                // 调用批量生成API
+                const response = await fetch(`${API_BASE_URL}/doc_templates/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || `生成失败: ${response.status}`);
+                }
+                
+                // 获取文件名
+                const disposition = response.headers.get('content-disposition');
+                let filename = '生成的文书.zip';
+                if (disposition) {
+                    const filenameStarMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+                    if (filenameStarMatch) {
+                        try {
+                            filename = decodeURIComponent(filenameStarMatch[1]);
+                        } catch (e) {
+                            filename = filenameStarMatch[1];
+                        }
+                    } else {
+                        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                        if (match) filename = match[1].replace(/['"]/g, '');
+                    }
+                }
+                
+                // 下载文件
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                
+                // 关闭弹窗
+                closeGenerateModal();
+                
+            } catch (error) {
+                console.error('生成文档失败:', error);
+                alert('生成文档失败: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
         }
 
         // 点击弹窗外部关闭

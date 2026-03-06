@@ -19,13 +19,14 @@ class DocumentGenerator:
         self.output_path = output_path
         self.file_ext = os.path.splitext(template_path)[1].lower()
         
-    def generate(self, data):
+    def generate(self, data, target_applicant=None):
         """
         根据数据填充模板
         data: 立案详情API返回的数据
+        target_applicant: 目标申请人姓名（可选，如果指定则只生成该申请人的文书）
         """
         # 预处理数据 - 将复杂表达式转换为简单变量
-        processed_data = self._preprocess_data(data)
+        processed_data = self._preprocess_data(data, target_applicant=target_applicant)
         
         print(f"预处理后的数据: {processed_data}")
         
@@ -533,8 +534,14 @@ class DocumentGenerator:
         
         return default
     
-    def _preprocess_data(self, data):
-        """预处理数据，计算所有变量值"""
+    def _preprocess_data(self, data, target_applicant=None):
+        """
+        预处理数据，计算所有变量值
+        
+        Args:
+            data: 案件数据
+            target_applicant: 目标申请人姓名（可选）
+        """
         result = {}
         
         # 获取案件数据（处理嵌套结构）
@@ -546,6 +553,7 @@ class DocumentGenerator:
                 case_data = case_data['data']
         
         print(f"案件数据 keys: {case_data.keys() if hasattr(case_data, 'keys') else 'N/A'}")
+        print(f"目标申请人: {target_applicant}")
         
         # 1. 基础字段
         case_no_raw = case_data.get('case_no', '')
@@ -592,9 +600,20 @@ class DocumentGenerator:
         applicant_arr = case_data.get('applicant_arr', [])
         print(f"申请人数量: {len(applicant_arr)}")
         
+        # 如果指定了目标申请人，查找该申请人
+        target_applicant_data = None
+        if target_applicant and applicant_arr:
+            for app in applicant_arr:
+                app_name = app.get('name', '') or app.get('applicant_name', '')
+                if app_name == target_applicant:
+                    target_applicant_data = app
+                    print(f"找到目标申请人: {app_name}")
+                    break
+        
         if applicant_arr and len(applicant_arr) > 0:
-            first_applicant = applicant_arr[0]
-            print(f"第一个申请人 keys: {list(first_applicant.keys()) if isinstance(first_applicant, dict) else 'N/A'}")
+            # 如果有目标申请人则使用目标申请人，否则使用第一个申请人
+            first_applicant = target_applicant_data if target_applicant_data else applicant_arr[0]
+            print(f"使用的申请人 keys: {list(first_applicant.keys()) if isinstance(first_applicant, dict) else 'N/A'}")
             
             result['registered_permanent_residence'] = self._get_field(first_applicant, 'registered_permanent_residence')
             result['applicant_name'] = self._get_field(first_applicant, 'name')

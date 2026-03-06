@@ -20,7 +20,7 @@ class BatchDocumentGenerator:
     def __init__(self, doc_templates_dir):
         self.doc_templates_dir = doc_templates_dir
     
-    def generate_batch(self, template_paths, case_data, case_no):
+    def generate_batch(self, template_paths, case_data, case_no, file_applicant_map=None):
         """
         批量生成文档 - 每个模板独立生成，然后打包成 zip
         
@@ -28,6 +28,7 @@ class BatchDocumentGenerator:
             template_paths: 模板路径列表
             case_data: 案件数据（原始API返回数据）
             case_no: 案件编号（用于文件名）
+            file_applicant_map: 文件与申请人的映射列表，格式: [{path, applicant_name, applicant_id}, ...]
         
         Returns:
             dict: {
@@ -36,6 +37,16 @@ class BatchDocumentGenerator:
         """
         generated_files = []
         
+        # 构建文件路径到申请人信息的映射
+        applicant_map = {}
+        if file_applicant_map:
+            for item in file_applicant_map:
+                path = item.get('path', '')
+                applicant_name = item.get('applicant_name')
+                applicant_id = item.get('applicant_id')
+                if path and applicant_name:
+                    applicant_map[path] = {'name': applicant_name, 'id': applicant_id}
+        
         # 为每个模板生成独立文件
         for template_path in template_paths:
             full_path = os.path.join(self.doc_templates_dir, template_path)
@@ -43,16 +54,20 @@ class BatchDocumentGenerator:
                 print(f"模板不存在: {template_path}")
                 continue
             
-            # 生成输出文件名
-            output_filename = self._generate_output_filename(case_no, template_path)
+            # 检查是否有特定的申请人信息
+            applicant_info = applicant_map.get(template_path)
+            target_applicant = applicant_info['name'] if applicant_info else None
+            
+            # 生成输出文件名（如果有申请人信息，添加到文件名）
+            output_filename = self._generate_output_filename(case_no, template_path, target_applicant)
             output_path = os.path.join(self.doc_templates_dir, 'output', output_filename)
             
             # 确保输出目录存在
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # 使用 DocumentGenerator 生成
+            # 使用 DocumentGenerator 生成（如果有特定申请人，传递该信息）
             generator = DocumentGenerator(full_path, output_path)
-            generator.generate(case_data)
+            generator.generate(case_data, target_applicant=target_applicant)
             
             generated_files.append(output_path)
             print(f"生成: {output_filename}")
@@ -65,11 +80,16 @@ class BatchDocumentGenerator:
         
         return {'zip': {'path': zip_path, 'files': generated_files}}
     
-    def _generate_output_filename(self, case_no, template_path):
+    def _generate_output_filename(self, case_no, template_path, applicant_name=None):
         """
         生成输出文件名
         格式: [年份]号-模板文件名称.docx
         例如: [2026]98-02案卷封面.xlsx
+        
+        Args:
+            case_no: 案号
+            template_path: 模板路径
+            applicant_name: 申请人姓名（可选，如果有则添加到文件名）
         """
         # 从案号提取年份和序号
         # 案号格式如: 永劳人仲案字（2026）98号 或 明永劳人仲案字[2026]98号
@@ -83,7 +103,7 @@ class BatchDocumentGenerator:
         
         # 尝试匹配年份和序号
         # 匹配 （2026）或 [2026] 格式
-        year_match = re.search(r'[（\[](\d{4})[）\]]', clean_case_no)
+        year_match = re.search(r'[\[\(（](\d{4})[\]\)）]', clean_case_no)
         number_match = re.search(r'(\d+)号', clean_case_no)
         
         if year_match:
@@ -91,19 +111,22 @@ class BatchDocumentGenerator:
         if number_match:
             number = number_match.group(1)
         
-        # 如果没有匹配到，使用时间戳
-        if not year or not number:
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            return f"[{timestamp}]-{os.path.basename(template_path)}"
-        
         # 获取模板文件名（不含路径和扩展名）
         template_name = os.path.splitext(os.path.basename(template_path))[0]
         
         # 获取扩展名
         ext = os.path.splitext(template_path)[1]
         
-        # 生成文件名: [2026]98-模板名称.docx
-        filename = f"[{year}]{number}-{template_name}{ext}"
+        # 如果有申请人姓名，添加到文件名
+        applicant_suffix = f"-{applicant_name}" if applicant_name else ""
+        
+        # 如果没有匹配到年份和序号，使用时间戳
+        if not year or not number:
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            filename = f"[{timestamp}]-{template_name}{applicant_suffix}{ext}"
+        else:
+            # 生成文件名: [2026]98-模板名称-申请人姓名.docx
+            filename = f"[{year}]{number}-{template_name}{applicant_suffix}{ext}"
         
         # 清理非法字符
         filename = re.sub(r'[\\/:*?"<>|]', '_', filename)

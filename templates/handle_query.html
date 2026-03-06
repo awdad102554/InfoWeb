@@ -788,6 +788,7 @@
         let selectedFiles = [];    // 已选中的文件列表
         let currentCaseId = null;  // 当前案件ID
         let currentCaseNo = '';    // 当前案件编号
+        let currentApplicants = []; // 当前案件的申请人列表
 
         // 打开生成弹窗
         async function openGenerateModal(caseId, caseNo) {
@@ -802,11 +803,42 @@
             selectedLevel2 = null;
             selectedLevel3 = null;
             selectedFiles = [];
+            currentApplicants = [];
             updateSelectedFilesList();
             updatePreview();
             
+            // 加载案件详情获取申请人信息
+            await loadCaseApplicants(caseId);
+            
             // 加载模板树
             await loadDocTemplatesTree();
+        }
+        
+        // 加载案件申请人信息
+        async function loadCaseApplicants(caseId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/handle/detail?id=${caseId}`);
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data) {
+                    // 处理嵌套结构
+                    let data = result.data.data;
+                    if (data && data.data) {
+                        data = data.data;
+                    }
+                    
+                    // 获取申请人列表
+                    const applicants = data.applicant_arr || data.applicants || [];
+                    currentApplicants = applicants.map(app => ({
+                        id: app.id || '',
+                        name: app.name || app.applicant_name || '',
+                        selected: false
+                    })).filter(app => app.name);
+                }
+            } catch (error) {
+                console.error('加载申请人信息失败:', error);
+                currentApplicants = [];
+            }
         }
 
         // 关闭生成弹窗
@@ -921,10 +953,15 @@
             // 如果是文件，直接添加到第三级显示
             if (level2Item.type === 'file') {
                 selectedLevel3 = level2Item;
+                // 检查是否需要选择申请人
+                const needsApplicant = requiresApplicantSelection(level2Item.path, level2Item.displayName);
+                const hintText = needsApplicant ? '<p class="text-xs text-orange-500 mt-1">此文件需要选择申请人</p>' : '';
+                
                 document.getElementById('level3List').innerHTML = `
                     <div class="text-center text-gray-400 mt-8 text-sm">
                         <i class="fas fa-check-circle text-green-500 mb-2"></i>
                         <p>已选择: ${escapeHtml(level2Item.displayName)}</p>
+                        ${hintText}
                         <button onclick="addCurrentFile()" class="mt-2 px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600">
                             <i class="fas fa-plus"></i> 添加到列表
                         </button>
@@ -966,7 +1003,16 @@
             
             container.innerHTML = files.map((item, index) => {
                 const isSelected = selectedLevel3 && selectedLevel3.path === item.path;
-                const isAdded = selectedFiles.some(f => f.path === item.path);
+                // 检查文件是否需要选择申请人
+                const needsApplicant = requiresApplicantSelection(item.path, item.displayName);
+                // 对于需要选择申请人的文件，检查是否已经添加了任何申请人版本
+                // 对于不需要的文件，按原逻辑检查
+                let isAdded = false;
+                if (needsApplicant) {
+                    isAdded = selectedFiles.some(f => f.path === item.path);
+                } else {
+                    isAdded = selectedFiles.some(f => f.path === item.path);
+                }
                 const extIcon = getFileIcon(item.ext);
                 
                 return `
@@ -977,6 +1023,7 @@
                         <div class="flex items-center">
                             <i class="fas ${extIcon} ${isSelected ? 'text-purple-600' : 'text-blue-500'} mr-2"></i>
                             <span class="text-sm ${isSelected ? 'font-medium text-purple-800' : 'text-gray-700'}">${escapeHtml(item.displayName)}</span>
+                            ${needsApplicant ? '<span class="ml-1 px-1 py-0.5 bg-orange-100 text-orange-600 text-xs rounded" title="需要选择申请人">需选人</span>' : ''}
                         </div>
                         ${isAdded ? '<i class="fas fa-check text-green-500 text-xs"></i>' : ''}
                     </div>
@@ -1020,9 +1067,181 @@
             addBtn.innerHTML = isAdded ? '<i class="fas fa-check"></i> 已添加' : '<i class="fas fa-plus"></i> 添加';
         }
 
+        // 检查文件是否需要选择申请人
+        function requiresApplicantSelection(filePath, fileName) {
+            // 检查路径是否包含"5-撤诉文书"
+            const isWithdrawalDoc = filePath.includes('5-撤诉文书');
+            // 检查文件名是否以"0"开头
+            const startsWithZero = fileName && fileName.startsWith('0');
+            return isWithdrawalDoc && startsWithZero;
+        }
+        
+        // 显示申请人选择对话框
+        function showApplicantSelector(fileInfo, callback) {
+            // 检查是否有可用的申请人
+            if (currentApplicants.length === 0) {
+                alert('未能获取到申请人信息，请检查案件数据');
+                return;
+            }
+            
+            // 创建对话框容器
+            const modal = document.createElement('div');
+            modal.id = 'applicantSelectorModal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4';
+            
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col">
+                    <div class="bg-gradient-to-r from-purple-600 to-purple-800 text-white px-6 py-4 rounded-t-xl flex justify-between items-center">
+                        <div>
+                            <h3 class="text-lg font-bold"><i class="fas fa-user-check mr-2"></i>选择申请人</h3>
+                            <p class="text-sm opacity-90 mt-1">${fileInfo.displayName || ''}</p>
+                        </div>
+                        <button onclick="closeApplicantSelector()" class="text-white hover:text-gray-200 text-2xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="p-6 flex-1 overflow-hidden flex flex-col">
+                        <p class="text-gray-600 text-sm mb-3">请选择需要生成文书的申请人（至少选择一位）：</p>
+                        <div class="flex-1 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                            ${currentApplicants.map((app, index) => `
+                                <div class="applicant-option flex items-center p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="toggleApplicantSelection(${index})">
+                                    <input type="checkbox" id="applicant-check-${index}" class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 cursor-pointer" 
+                                        onchange="updateSelectAllState()">
+                                    <label for="applicant-check-${index}" class="ml-3 flex-1 cursor-pointer">
+                                        <span class="font-medium text-gray-800">${app.name}</span>
+                                    </label>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mt-3 flex items-center justify-between">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="selectAllApplicants" class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500" onchange="toggleSelectAllApplicants()">
+                                <span class="ml-2 text-sm text-gray-700">全选</span>
+                            </label>
+                            <span id="selectedCountDisplay" class="text-sm text-gray-500">已选择 0 位</span>
+                        </div>
+                    </div>
+                    <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                        <button onclick="closeApplicantSelector()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                            取消
+                        </button>
+                        <button onclick="confirmApplicantSelection()" id="confirmApplicantBtn" disabled
+                            class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-check mr-2"></i>确认选择
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // 点击外部关闭
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeApplicantSelector();
+                }
+            });
+            
+            // 保存回调函数
+            window.applicantSelectorCallback = callback;
+        }
+        
+        // 关闭申请人选择对话框
+        window.closeApplicantSelector = function() {
+            const modal = document.getElementById('applicantSelectorModal');
+            if (modal) {
+                modal.remove();
+            }
+            delete window.applicantSelectorCallback;
+        };
+        
+        // 切换申请人选择
+        window.toggleApplicantSelection = function(index) {
+            const checkbox = document.getElementById(`applicant-check-${index}`);
+            checkbox.checked = !checkbox.checked;
+            updateSelectAllState();
+        };
+        
+        // 切换全选
+        window.toggleSelectAllApplicants = function() {
+            const selectAllCheckbox = document.getElementById('selectAllApplicants');
+            const checkboxes = document.querySelectorAll('[id^="applicant-check-"]');
+            checkboxes.forEach(cb => {
+                cb.checked = selectAllCheckbox.checked;
+            });
+            updateSelectAllState();
+        };
+        
+        // 更新全选状态
+        window.updateSelectAllState = function() {
+            const checkboxes = document.querySelectorAll('[id^="applicant-check-"]');
+            const checkedBoxes = document.querySelectorAll('[id^="applicant-check-"]:checked');
+            const selectAllCheckbox = document.getElementById('selectAllApplicants');
+            
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = checkboxes.length > 0 && checkboxes.length === checkedBoxes.length;
+            }
+            
+            const confirmBtn = document.getElementById('confirmApplicantBtn');
+            if (confirmBtn) {
+                confirmBtn.disabled = checkedBoxes.length === 0;
+            }
+            
+            const countDisplay = document.getElementById('selectedCountDisplay');
+            if (countDisplay) {
+                countDisplay.textContent = `已选择 ${checkedBoxes.length} 位`;
+            }
+        };
+        
+        // 确认申请人选择
+        window.confirmApplicantSelection = function() {
+            const checkboxes = document.querySelectorAll('[id^="applicant-check-"]:checked');
+            const selectedApplicants = [];
+            checkboxes.forEach(cb => {
+                const index = parseInt(cb.id.replace('applicant-check-', ''));
+                if (currentApplicants[index]) {
+                    selectedApplicants.push(currentApplicants[index]);
+                }
+            });
+            
+            if (selectedApplicants.length > 0 && window.applicantSelectorCallback) {
+                window.applicantSelectorCallback(selectedApplicants);
+            }
+            closeApplicantSelector();
+        };
+        
         // 添加当前选中的文件到列表
         function addCurrentFile() {
             if (!selectedLevel3) return;
+            
+            const filePath = selectedLevel3.path;
+            const fileName = selectedLevel3.displayName;
+            
+            // 检查是否需要选择申请人
+            if (requiresApplicantSelection(filePath, fileName)) {
+                showApplicantSelector(selectedLevel3, function(selectedApplicants) {
+                    // 为每个选中的申请人添加一份文件
+                    selectedApplicants.forEach(app => {
+                        const fileWithApplicant = {
+                            ...selectedLevel3,
+                            displayName: `${selectedLevel3.displayName} (${app.name})`,
+                            applicantName: app.name,
+                            applicantId: app.id,
+                            uniqueId: `${selectedLevel3.path}#${app.id || app.name}`
+                        };
+                        
+                        // 检查是否已存在
+                        if (!selectedFiles.some(f => f.uniqueId === fileWithApplicant.uniqueId)) {
+                            selectedFiles.push(fileWithApplicant);
+                        }
+                    });
+                    updateSelectedFilesList();
+                    updatePreview();
+                    updateAddButton();
+                    renderLevel3();
+                });
+                return;
+            }
             
             // 检查是否已存在
             if (selectedFiles.some(f => f.path === selectedLevel3.path)) {
@@ -1063,12 +1282,16 @@
                 const extIcon = getFileIcon(file.ext);
                 const isDocx = file.ext === '.docx';
                 const isXlsx = file.ext === '.xlsx' || file.ext === '.xls';
+                // 如果文件有申请人信息，显示标签
+                const applicantBadge = file.applicantName ? 
+                    `<span class="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">申请人: ${escapeHtml(file.applicantName)}</span>` : '';
                 
                 return `
                 <div class="flex items-center justify-between p-2 mb-2 bg-white rounded border border-gray-200 hover:shadow-sm transition">
-                    <div class="flex items-center min-w-0">
+                    <div class="flex items-center min-w-0 flex-1">
                         <i class="fas ${extIcon} ${isDocx ? 'text-blue-500' : isXlsx ? 'text-green-500' : 'text-gray-500'} mr-2"></i>
                         <span class="text-sm text-gray-700 truncate" title="${escapeHtml(file.displayName)}">${escapeHtml(file.displayName)}</span>
+                        ${applicantBadge}
                     </div>
                     <button onclick="removeSelectedFile(${index})" class="ml-2 text-gray-400 hover:text-red-500 transition">
                         <i class="fas fa-times"></i>
@@ -1080,11 +1303,21 @@
 
         // 从列表中移除文件
         function removeSelectedFile(index) {
+            const removedFile = selectedFiles[index];
             selectedFiles.splice(index, 1);
             updateSelectedFilesList();
             updatePreview();
             updateAddButton();
             renderLevel3();
+            
+            // 如果移除的是带有申请人信息的文件，检查是否还有其他同名文件
+            if (removedFile && removedFile.applicantName) {
+                const hasOtherSameFile = selectedFiles.some(f => f.path === removedFile.path);
+                // 如果没有其他同名文件了，刷新第三级列表以移除"已添加"状态
+                if (!hasOtherSameFile) {
+                    renderLevel3();
+                }
+            }
         }
 
         // 清空所有已选文件
@@ -1155,7 +1388,13 @@
                 // 准备请求数据
                 const requestData = {
                     template_paths: selectedFiles.map(f => f.path),
-                    case_id: caseId
+                    case_id: caseId,
+                    // 添加文件与申请人的映射关系
+                    file_applicant_map: selectedFiles.map(f => ({
+                        path: f.path,
+                        applicant_name: f.applicantName || null,
+                        applicant_id: f.applicantId || null
+                    }))
                 };
                 console.log('生成文档请求:', requestData);
                 
