@@ -146,10 +146,10 @@ if __name__ == '__main__':
         generator = BatchDocumentGenerator('文件生成')
         # 测试数据（模拟API返回格式）
         test_data = {
-            'case_no': '永劳人仲案字（2026）98号',
+            'case_no': '永劳人仲案字[2026]98号',
             'case_reason': '测试案由',
             'applicant_arr': [{'name': '测试申请人'}],
             'respondent_arr': [{'name': '测试被申请人'}]
         }
-        result = generator.generate_batch(sys.argv[1:], test_data, '永劳人仲案字（2026）98号')
+        result = generator.generate_batch(sys.argv[1:], test_data, '永劳人仲案字[2026]98号')
         print(f"生成结果: {result}")

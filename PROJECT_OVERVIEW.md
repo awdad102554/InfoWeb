@@ -1,0 +1,412 @@
+# 劳动仲裁信息查询综合服务平台 - 项目总览
+
+> 本文档供 AI 助手初始化后快速了解项目结构和功能
+
+## 一、项目概述
+
+### 1.1 项目简介
+本项目是将原有的 **Info**（内部API服务）和 **info-Web**（前端Web服务）两个项目整合为一个统一的 Flask 应用。
+
+### 1.2 核心功能
+1. **前端页面服务** - 劳动仲裁申请书在线填写、案件查询
+2. **内部API服务** - 企业信息查询、身份证信息查询
+3. **数据库API服务** - 案件数据增删改查
+4. **文档自动生成** - 根据案件数据自动填充 Word/Excel 模板生成仲裁文书
+
+### 1.3 部署环境
+- **部署网段**: 10.99.144.x
+- **Python版本**: 3.8+
+- **数据库**: MySQL 5.7+ (当前配置 127.0.0.1)
+- **外部API**: http://10.96.10.78:8080 (仲裁系统内网)
+
+---
+
+## 二、项目结构
+
+```
+InfoWeb/
+├── app.py                      # 主应用入口 (约2500行)
+├── start.py                    # 启动脚本
+├── start.sh / start.bat        # 启动脚本
+├── requirements.txt            # Python依赖
+├── database_schema.sql         # 数据库表结构
+├── infoweb.service             # Linux系统服务配置
+│
+├── modules/                    # 后端模块
+│   ├── config.py               # 配置文件
+│   ├── login_manager.py        # 登录管理（Token缓存）
+│   ├── company_query.py        # 企业信息查询
+│   ├── id_card_query.py        # 身份证信息查询
+│   └── database.py             # MySQL数据库操作（连接池）
+│
+├── templates/                  # HTML模板
+│   ├── index.html              # 首页（申请书填写）
+│   ├── query_test.html         # 案件查询测试
+│   ├── cases_manage.html       # 案件管理
+│   ├── receive_query.html      # 收件查询
+│   ├── receive_detail.html     # 收件详情
+│   ├── handle_query.html       # 立案查询
+│   ├── handle_detail.html      # 立案详情
+│   ├── reserve_query.html      # 预约仲裁查询
+│   └── reserve_detail.html     # 预约仲裁详情
+│
+├── static/                     # 静态文件
+│   ├── css/styles.css
+│   └── js/
+│       ├── scripts.js
+│       └── api_client.js
+│
+├── 文件生成/                   # 文档模板和输出
+│   ├── 1-立案/                 # 立案相关文书模板
+│   ├── 2-开庭通知文书/         # 开庭通知模板
+│   ├── 3-调、裁、决文书/       # 调解裁决文书模板
+│   ├── 4-反申请文书/           # 反申请文书模板
+│   ├── 5-撤诉文书/             # 撤诉文书模板
+│   └── output/                 # 生成文件输出目录
+│
+├── document_generator.py       # 文档生成核心类
+├── batch_document_generator.py # 批量文档生成
+└── convert_doc_to_docx.py      # 格式转换工具
+```
+
+---
+
+## 三、技术栈
+
+| 类型 | 技术 |
+|------|------|
+| Web框架 | Flask 2.3.3 |
+| 数据库 | MySQL 5.7+, mysql-connector-python 8.1.0 |
+| HTTP请求 | requests 2.31.0 |
+| 跨域支持 | Flask-CORS 4.0.0 |
+| 文档处理 | python-docx 1.2.0, openpyxl 3.1.2, docxcompose 1.4.0 |
+| 加密 | cryptography 3.0.0 |
+
+---
+
+## 四、核心模块详解
+
+### 4.1 文档生成系统 (document_generator.py)
+
+#### 核心类: `DocumentGenerator`
+
+**功能**: 根据案件数据自动填充 Word/Excel 模板
+
+**变量命名规范**:
+```
+基础字段:
+- {case_no} / {case_no_raw}          # 案号
+- {applicant} / {applicant_str}      # 申请人
+- {respondent}                       # 被申请人
+- {apply_at}                         # 申请日期
+- {handle_at}                        # 立案日期
+- {case_reason}                      # 案由
+- {中文_today}                        # 今日中文日期
+
+申请人信息:
+- {applicant_arr[0].name}
+- {applicant_arr[0].mobile}
+- {applicant_arr[0].id_number}
+- {applicant_arr[0].address}
+- {applicant_arr[0].registered_permanent_residence}
+- {applicant_arr[0].agents[0].name}
+- {applicant_arr[0].agents[0].mobile}
+
+被申请人信息:
+- {respondent_arr[0].name}
+- {respondent_arr[0].company_address}
+- {respondent_arr[0].legal_name}
+- {respondent_arr[0].legal_mobile}
+- {respondent_arr[0].agents[0].name}
+- {respondent_arr[0].agents[0].mobile}
+
+仲裁请求:
+- {request_numbers}                  # 请求编号列表 (1、2、3)
+- {request_count}                    # 请求数量
+- {request_1_intro}                  # 第1项请求内容
+- {request_2_intro}                  # 第2项请求内容
+- {request_1_object}                 # 第1项请求金额
+- {total_money}                      # 案件标的总和
+
+开庭信息 (从 tribunal_plan 提取):
+- {open}                             # 开庭日期时间 (2026年3月11日（星期三）上午9时)
+- {tel}                              # 开庭电话
+- {年月日_created_at}                 # 开庭创建日期中文格式 (二〇二六年三月四日)
+
+仲裁庭信息:
+- {arbitrator}                       # 仲裁员（独任）
+- {arbitrator_one}                   # 仲裁员一（合议庭）
+- {arbitrator_two}                   # 仲裁员二（合议庭）
+- {clerk}                            # 书记员
+
+反申请日期（从 case_reverse_arb_request 提取）:
+- {re_at_y}                          # 反申请年份，如 2026
+- {re_at_m}                          # 反申请月份 1-12（无前导0）
+- {re_at_d}                          # 反申请日期 1-31（无前导0）
+- {中文_re_at}                         # 反申请日期中文格式，如 二零二五年十二月三十一日
+
+日期格式:
+- {中文_apply_at}                     # 申请日期中文 (二〇二六年二月十三日)
+- {中文_handle_at}                    # 立案日期中文
+- {年月日_apply_at}                   # 申请日期年月日 (2026年2月13日)
+- {年月日_handle_at}                  # 立案日期年月日
+- {handle_at_y}                       # 立案日期年份，如 2026
+- {handle_at_m}                       # 立案日期月份 1-12（无前导0）
+- {handle_at_d}                       # 立案日期日 1-31（无前导0）
+
+案号信息:
+- {case_no} / {case_no_raw}           # 案号（如：永劳人仲案字[2026]123号）
+- {case_no_year}                      # 案号年份部分（如：永劳人仲案字[2026]）
+- {case_no_no}                        # 案号编号（如：123）
+```
+
+**重要数据结构**:
+- `tribunal_plan` - 开庭计划数组，包含字段: `open_at`, `text`, `tel`, `created_at`, `address`, `tribunal` 等
+
+### 4.2 登录管理 (modules/login_manager.py)
+
+**功能**: 管理仲裁系统的登录状态和 Token 缓存
+
+**核心方法**:
+- `check_and_renew_login()` - 检查并续期登录
+- `get_auth_headers()` - 获取认证头
+
+**流程**: 
+1. 优先从数据库获取登录信息
+2. 如不存在或过期，调用登录 API 获取新 Token
+3. 保存到数据库供后续使用
+
+### 4.3 数据库模块 (modules/database.py)
+
+**功能**: MySQL 数据库连接池管理
+
+**特点**:
+- 使用 `MySQLConnectionPool` 连接池
+- 带重试机制（最多3次）
+- 自动表创建
+
+**主要表**:
+- `login_info` - 登录信息缓存
+- `company_cache` - 企业信息缓存
+- `idcard_cache` - 身份证信息缓存
+
+---
+
+## 五、API 接口列表
+
+### 5.1 页面路由
+
+| 路由 | 功能 |
+|------|------|
+| GET `/` | 首页（申请书填写） |
+| GET `/query` | 案件查询页 |
+| GET `/cases` | 案件管理页 |
+| GET `/receive_query` | 收件查询页 |
+| GET `/receive_detail` | 收件详情页 |
+| GET `/handle_query` | 立案查询页 |
+| GET `/handle_detail` | 立案详情页 |
+| GET `/reserve_query` | 预约仲裁查询页 |
+| GET `/reserve_detail` | 预约仲裁详情页 |
+
+### 5.2 内部 API
+
+| 路由 | 方法 | 功能 |
+|------|------|------|
+| `/api/status` | GET | 服务状态 |
+| `/api/login/status` | GET | 登录状态 |
+| `/api/login` | POST | 手动登录 |
+| `/api/company/query` | POST | 企业信息查询 |
+| `/api/idcard/query` | POST | 身份证信息查询 |
+| `/api/db/status` | GET | 数据库状态 |
+
+### 5.3 案件管理 API
+
+| 路由 | 方法 | 功能 |
+|------|------|------|
+| `/api/cases/save` | POST | 保存案件 |
+| `/api/cases/query` | GET | 根据收件编号查询 |
+| `/api/cases/list` | GET | 案件列表 |
+| `/api/cases/<id>` | GET/DELETE | 获取/删除案件 |
+| `/api/cases/<id>/applicants` | GET | 获取申请人 |
+| `/api/cases/<id>/respondents` | GET | 获取被申请人 |
+| `/api/cases/<id>/evidence` | GET | 获取证据 |
+| `/api/applicants/<id>` | GET | 申请人详情 |
+| `/api/applicants/<id>/requests` | GET | 仲裁请求 |
+
+### 5.4 外部数据查询 API（对接 10.96.10.78）
+
+| 路由 | 方法 | 功能 |
+|------|------|------|
+| `/api/receive/query` | GET | 收件查询 |
+| `/api/receive/detail` | GET | 收件详情 |
+| `/api/handle/query` | GET | 立案查询 |
+| `/api/handle/detail` | GET | 立案详情 |
+| `/api/reserve/query` | GET | 预约仲裁查询 |
+| `/api/reserve/detail` | GET | 预约仲裁详情 |
+
+### 5.5 文档生成 API
+
+| 路由 | 方法 | 功能 |
+|------|------|------|
+| `/api/doc_templates/tree` | GET | 获取模板树 |
+| `/api/doc_templates/download` | GET | 下载模板 |
+| `/api/doc_templates/generate` | POST | 生成文档 |
+
+**生成文档请求示例**:
+```json
+{
+  "template_paths": ["1-立案/（受理）立案审批表.docx"],
+  "case_id": "215083"
+}
+```
+
+---
+
+## 六、数据流转图
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                          用户请求                            │
+└──────────────────────┬──────────────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Flask Web 服务                          │
+│                     (app.py :5000)                          │
+└──────────────────────┬──────────────────────────────────────┘
+                       ▼
+           ┌───────────────────────┐
+           │    路由分发            │
+           └───────────┬───────────┘
+                       ▼
+       ┌───────────────┼───────────────┐
+       ▼               ▼               ▼
+┌────────────┐  ┌────────────┐  ┌────────────┐
+│  页面路由   │  │  API 路由   │  │ 外部API代理 │
+└─────┬──────┘  └─────┬──────┘  └─────┬──────┘
+      │               │               │
+      ▼               ▼               ▼
+┌────────────┐  ┌────────────┐  ┌────────────┐
+│ templates/ │  │  MySQL DB  │  │10.96.10.78:│
+│  HTML模板  │  │  (本地)    │  │   8080     │
+└────────────┘  └────────────┘  └────────────┘
+                       ▲
+                       │
+              ┌────────┴────────┐
+              │  文档生成系统    │
+              │document_generator│
+              └─────────────────┘
+```
+
+---
+
+## 七、配置文件说明 (modules/config.py)
+
+```python
+# 数据库配置
+DB_HOST = "127.0.0.1"
+DB_PORT = 3306
+DB_NAME = "判决书生成"
+DB_USER = "root"
+DB_PASSWORD = "difydify"
+
+# 外部仲裁系统API
+LOGIN_URL = "http://10.96.10.78:8080/v1/api/admin/login"
+COMPANY_QUERY_URL = "http://10.96.10.78:8080/v1/api/admin/datashare/..."
+
+# 登录账号（已加密）
+LOGIN_USERNAME = "huhailiang"
+LOGIN_PASSWORD = "eyJpdiI6..."
+
+# Flask配置
+FLASK_HOST = "0.0.0.0"
+FLASK_PORT = 5000
+FLASK_DEBUG = True
+```
+
+---
+
+## 八、常见问题处理
+
+### 8.1 数据库连接失败
+- 检查 `modules/config.py` 中的数据库配置
+- 确保 MySQL 允许远程连接
+- 查看日志中的重试信息
+
+### 8.2 外部 API 调用失败
+- 检查是否能访问 `10.96.10.78:8080`
+- 检查登录 Token 是否过期（会自动重新登录）
+- 查看 `login_info` 表中的登录状态
+
+### 8.3 文档生成变量为空
+- 检查模板变量名是否正确（区分大小写）
+- 检查 `tribunal_plan` 等数组字段是否有数据
+- 查看日志中预处理后的数据输出
+
+---
+
+## 九、开发和调试
+
+### 启动服务
+```bash
+# 开发模式
+python start.py
+
+# 或 Linux
+./start.sh
+
+# 或 Windows
+start.bat
+```
+
+### 日志查看
+- 日志输出到控制台和 `flask.log`
+- 关键调试信息会打印预处理后的数据
+
+### 测试接口
+```bash
+# 健康检查
+curl http://localhost:5000/api/health
+
+# 生成文档
+curl -X POST http://localhost:5000/api/doc_templates/generate \
+  -H "Content-Type: application/json" \
+  -d '{"template_paths":["1-立案/（受理）立案审批表.docx"],"case_id":"215083"}'
+```
+
+---
+
+## 十、扩展开发指南
+
+### 添加新变量
+1. 在 `document_generator.py` 的 `_preprocess_data` 方法中添加变量提取逻辑
+2. 从 `case_data` 中获取原始数据
+3. 处理格式转换（如日期转中文）
+4. 赋值到 `result` 字典
+
+### 添加新 API
+1. 在 `app.py` 中添加路由装饰器
+2. 调用 `login_manager.check_and_renew_login()` 获取认证
+3. 使用 `requests` 调用外部 API
+4. 返回统一格式的 JSON 响应
+
+### 添加新模板
+1. 将模板文件放入 `文件生成/` 下的对应分类目录
+2. 使用 `{变量名}` 格式标记需要填充的位置
+3. 确保变量名与代码中提取的变量一致
+
+---
+
+## 十一、关键文件修改历史
+
+- **2026-03-05**: 添加立案日期变量 `{handle_at_y}`, `{handle_at_m}`, `{handle_at_d}`
+- **2026-03-05**: 添加案号年份变量 `{case_no_year}`（从案号中提取年份）
+- **2026-03-05**: 添加反申请日期变量 `{re_at_y}`, `{re_at_m}`, `{re_at_d}`, `{中文_re_at}`
+- **2026-03-05**: 添加仲裁员和书记员变量 `{arbitrator}`, `{arbitrator_one}`, `{arbitrator_two}`, `{clerk}`
+- **2026-03-05**: 修复 `年月日_created_at` 变量（ tribunal_plan 中字段名为 `created_at` 非 `create_at` ）
+- **2026-03-04**: 添加批量文档生成功能
+- **2026-03-03**: 添加立案查询和详情页面
+- **2026-03-02**: 添加收件查询功能，修复数据库连接池
+
+---
+
+*文档更新时间: 2026-03-05*
