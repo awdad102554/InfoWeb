@@ -8,8 +8,8 @@
     <meta http-equiv="Expires" content="0">
     <title>立案查询 - 劳动仲裁信息查询综合服务平台</title>
     <meta name="version" content="v1.1">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="{{ url_for('static', filename='js/tailwindcss.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/fontawesome.all.min.css') }}">
     <style>
         .fade-in { animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn {
@@ -159,7 +159,7 @@
 
     <!-- 生成文书弹窗 -->
     <div id="generateModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] h-[90vh] flex flex-col">
+        <div class="bg-white rounded-xl shadow-2xl w-[1100px] max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden">
             <!-- 弹窗头部 -->
             <div class="bg-gradient-to-r from-purple-600 to-purple-800 text-white px-6 py-4 rounded-t-xl flex justify-between items-center">
                 <div>
@@ -175,7 +175,7 @@
             <div class="p-6 flex-1 overflow-hidden flex flex-col">
                 <p class="text-gray-600 text-sm mb-3">请选择要生成的文书模板，可多选后合并生成：</p>
                 
-                <div class="flex gap-4 flex-1" style="height: calc(90vh - 280px); min-height: 450px;">
+                <div class="flex gap-4 flex-1 min-h-0" style="max-height: calc(90vh - 220px);">
                     <!-- 左侧：三级选择器 -->
                     <div class="w-2/3 flex gap-3">
                         <!-- 第一级 -->
