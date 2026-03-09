@@ -601,6 +601,7 @@ class DocumentGenerator:
         result['respondent'] = case_data.get('respondent', '')
         result['apply_at'] = case_data.get('apply_at', '')
         result['handle_at'] = case_data.get('handle_at', '')
+        result['end_at'] = case_data.get('end_at', '')
         result['case_reason'] = case_data.get('case_reason', '')
         
         # 当前年份
@@ -937,6 +938,22 @@ class DocumentGenerator:
             result['中文_apply_at'] = ''
             result['年月日_apply_at'] = ''
         
+        # 8.2 结案日期格式化
+        end_at = case_data.get('end_at', '')
+        if end_at:
+            try:
+                dt = datetime.strptime(end_at.split()[0], '%Y-%m-%d')
+                # 年月日格式 (2026年1月21日)
+                result['年月日_end_at'] = f"{dt.year}年{dt.month}月{dt.day}日"
+                # 中文格式 (二〇二六年一月二十一日)
+                result['中文_end_at'] = self._get_chinese_date(dt)
+            except:
+                result['年月日_end_at'] = end_at
+                result['中文_end_at'] = end_at
+        else:
+            result['年月日_end_at'] = ''
+            result['中文_end_at'] = ''
+        
         # 9. 开庭信息（从 tribunal_plan 最后一个元素提取）
         result['open'] = self._get_open_date_time(case_data)
         
@@ -973,6 +990,16 @@ class DocumentGenerator:
         result['arbitrator_one'] = case_data.get('arbitrator_one', '') or ''
         result['arbitrator_two'] = case_data.get('arbitrator_two', '') or ''
         result['clerk'] = case_data.get('clerk', '') or ''
+        
+        # 拼接仲裁员字符串
+        arbitrators = []
+        if result['arbitrator']:
+            arbitrators.append(result['arbitrator'])
+        if result['arbitrator_one']:
+            arbitrators.append(result['arbitrator_one'])
+        if result['arbitrator_two']:
+            arbitrators.append(result['arbitrator_two'])
+        result['arbitrator_str'] = '、'.join(arbitrators)
         
         # 13. 反申请日期（从 review_matter 中查找 apply_matter='仲裁反申请' 的条目，取 start_at）
         re_at = self._get_reverse_request_date(case_data)
