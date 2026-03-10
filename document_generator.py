@@ -368,6 +368,35 @@ class DocumentGenerator:
         
         return text
     
+    def _number_to_chinese(self, num):
+        """
+        将数字转换为中文数字（1-99）
+        如: 1->一, 2->二, 10->十, 11->十一, 21->二十一
+        """
+        if not num or num < 1:
+            return str(num)
+        
+        chinese_nums = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
+        
+        if num < 10:
+            return chinese_nums[num]
+        elif num == 10:
+            return '十'
+        elif num < 20:
+            # 11-19: 十一、十二...
+            return f"十{chinese_nums[num - 10] if num - 10 > 0 else ''}"
+        elif num < 100:
+            # 21-99
+            tens = num // 10
+            ones = num % 10
+            if ones == 0:
+                return f"{chinese_nums[tens]}十"
+            else:
+                return f"{chinese_nums[tens]}十{chinese_nums[ones]}"
+        else:
+            # 超过99，直接返回数字
+            return str(num)
+    
     def _convert_to_chinese_date(self, date_value):
         """将日期值转换为中文格式，如 2026-02-14 -> 2026年2月14日"""
         from datetime import datetime
@@ -558,9 +587,14 @@ class DocumentGenerator:
         # 尝试多种可能的数据结构
         case_data = data
         if 'data' in data:
-            case_data = data['data']
-            if isinstance(case_data, dict) and 'data' in case_data:
-                case_data = case_data['data']
+            data_content = data['data']
+            # 处理 data 是列表的情况（有时API返回数组）
+            if isinstance(data_content, list) and len(data_content) > 0:
+                case_data = data_content[0]
+            elif isinstance(data_content, dict):
+                case_data = data_content
+                if 'data' in case_data:
+                    case_data = case_data['data']
         
         print(f"案件数据 keys: {case_data.keys() if hasattr(case_data, 'keys') else 'N/A'}")
         print(f"目标申请人列表: {target_applicants}")
@@ -862,21 +896,37 @@ class DocumentGenerator:
                     request_list.append(f"{i+1}. {intro}")
             result['request_list'] = '\n'.join(request_list)
             
-            # 生成JavaScript风格的表格循环内容
-            # 完整的表达式: data.case_arb_request.map((item, idx) => `${idx + 1}. ${item.intro}`).join('\n')
+            # 生成JavaScript风格的表格循环内容（不带序号）
+            # 完整的表达式: data.case_arb_request.map((item, idx) => `${item.intro}`).join('\n')
             request_lines = []
             for i, req in enumerate(case_arb_request):
                 intro = req.get('intro', '')
-                request_lines.append(f"{i+1}. {intro}")
+                request_lines.append(intro)
             request_text = '\n'.join(request_lines)
             
             # 支持这种复杂的模板表达式 - 注意转义字符的处理
-            result["data.case_arb_request.map((item, idx) => `${idx + 1}. ${item.intro}`).join('\\n')"] = request_text
+            result["data.case_arb_request.map((item, idx) => `${item.intro}`).join('\\n')"] = request_text
+            
+            # 生成带中文序号的列表（一、二、三、）
+            # 完整的表达式: data.case_arb_request.map((item, idx) => `${idx + 1}、${item.intro}`).join('\n')
+            request_lines_chinese = []
+            for i, req in enumerate(case_arb_request):
+                intro = req.get('intro', '')
+                chinese_num = self._number_to_chinese(i + 1)
+                request_lines_chinese.append(f"{chinese_num}、{intro}")
+            request_text_chinese = '\n'.join(request_lines_chinese)
+            
+            # 带反引号的版本（兼容旧模板）
+            result["data.case_arb_request.map((item, idx) => `${idx + 1}、${item.intro}`).join('\\n')"] = request_text_chinese
+            # 不带反引号的版本（匹配用户实际使用的格式）
+            result["data.case_arb_request.map((item, idx) => ${idx + 1}、${item.intro}).join('\\n')"] = request_text_chinese
         else:
             result['request_numbers'] = ''
             result['request_list'] = ''
             result['item.intro'] = ''
-            result["data.case_arb_request.map((item, idx) => `${idx + 1}. ${item.intro}`).join('\\n')"] = ''
+            result["data.case_arb_request.map((item, idx) => `${item.intro}`).join('\\n')"] = ''
+            result["data.case_arb_request.map((item, idx) => `${idx + 1}、${item.intro}`).join('\\n')"] = ''
+            result["data.case_arb_request.map((item, idx) => ${idx + 1}、${item.intro}).join('\\n')"] = ''
         
         # 5. 案件标的总和
         total_money = sum(

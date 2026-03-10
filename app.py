@@ -2106,7 +2106,18 @@ def generate_document():
             }), 500
         
         case_data = response.json()
-        case_no = case_data.get('data', {}).get('case_no', case_id)
+        
+        # 处理API响应数据结构不一致的情况
+        # 有时 data 是字典，有时可能是列表
+        data_content = case_data.get('data')
+        if isinstance(data_content, dict):
+            case_no = data_content.get('case_no', case_id)
+        elif isinstance(data_content, list) and len(data_content) > 0:
+            # 如果是列表，取第一个元素的 case_no
+            first_item = data_content[0]
+            case_no = first_item.get('case_no', case_id) if isinstance(first_item, dict) else case_id
+        else:
+            case_no = case_id
         
         # 批量生成文档
         from batch_document_generator import BatchDocumentGenerator
