@@ -119,6 +119,13 @@ InfoWeb/
 - {respondent_arr[0].legal_mobile}
 - {respondent_arr[0].agents[0].name}
 - {respondent_arr[0].agents[0].mobile}
+- {respondent_arr[1].name} 至 {respondent_arr[9].name}  # 支持最多10个被申请人
+
+被申请人动态表格行（立案审批表专用）:
+- {respondent_table_row}                 # 触发变量，自动替换为"被申请人"或"被申请人1/2/3..."
+  使用方式: 在表格行首单元格放置此变量，系统会根据被申请人数量自动复制行
+  - 1个被申请人: 显示"被申请人"
+  - 多个被申请人: 显示"被申请人1"、"被申请人2"、"被申请人3"...
 
 仲裁请求:
 - {request_numbers}                  # 请求编号列表 (1、2、3)
@@ -407,6 +414,8 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十一、关键文件修改历史
 
+- **2026-03-10**: 添加被申请人动态表格行功能 `{respondent_table_row}`，支持立案审批表自动复制多被申请人行
+- **2026-03-10**: 扩展被申请人变量支持，最多支持10个被申请人 `{respondent_arr[0..9]}`
 - **2026-03-06**: 添加组合字符串变量 `{a_str}`（选中申请人信息）和 `{r_str}`（被申请人信息）
 - **2026-03-06**: 优化申请人选择功能：生成撤诉文书时多选申请人只生成一份文书
 - **2026-03-05**: 添加立案日期变量 `{handle_at_y}`, `{handle_at_m}`, `{handle_at_d}`
@@ -420,4 +429,4 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ---
 
-*文档更新时间: 2026-03-06*
+*文档更新时间: 2026-03-10*

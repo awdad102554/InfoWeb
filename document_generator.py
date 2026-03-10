@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 from datetime import datetime
+from copy import deepcopy
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -53,6 +54,9 @@ class DocumentGenerator:
         for para in doc.paragraphs:
             self._replace_in_paragraph(para, data)
         
+        # 处理被申请人表格动态行（必须在替换变量之前）
+        self._process_respondent_table_rows(doc, data)
+        
         # 替换表格中的变量
         for table in doc.tables:
             for row in table.rows:
@@ -64,6 +68,129 @@ class DocumentGenerator:
         self._replace_in_textboxes(doc, data)
         
         doc.save(self.output_path)
+    
+    def _process_respondent_table_rows(self, doc, data):
+        """
+        处理被申请人表格动态行复制
+        检测 {respondent_table_row} 标记，根据被申请人数量复制行
+        """
+        from docx.oxml.ns import qn
+        from copy import deepcopy
+        
+        # 获取被申请人数量
+        respondent_count = data.get('respondent_count', 0)
+        print(f"[_process_respondent_table_rows] 被申请人数量: {respondent_count}")
+        
+        if respondent_count <= 1:
+            # 只有一个或没有被申请人时，将 {respondent_table_row} 替换为 "被申请人"
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for para in cell.paragraphs:
+                            para_text = self._get_paragraph_full_text(para)
+                            if '{respondent_table_row}' in para_text:
+                                print(f"  替换单被申请人标记: {para_text[:50]}")
+                                self._replace_in_paragraph(para, {'respondent_table_row': '被申请人'})
+            return
+        
+        # 多个被申请人时，需要复制行
+        for table in doc.tables:
+            rows_to_process = []
+            
+            # 先找出需要处理的行（包含 {respondent_table_row} 的行）
+            for row_idx, row in enumerate(table.rows):
+                row_text = ''.join([self._get_paragraph_full_text(para) for cell in row.cells for para in cell.paragraphs])
+                if '{respondent_table_row}' in row_text:
+                    print(f"  找到标记行 (行{row_idx}): {row_text[:80]}")
+                    rows_to_process.append((row_idx, row))
+            
+            # 处理每个标记行
+            for base_row_idx, base_row in rows_to_process:
+                print(f"  处理基础行 {base_row_idx}，将复制 {respondent_count - 1} 个新行")
+                
+                # 需要在当前行后插入 (respondent_count - 1) 个新行
+                # 从倒数第二个开始往前插入，保持顺序
+                for i in range(respondent_count - 1, 0, -1):
+                    # 复制行
+                    new_row = self._copy_table_row(base_row)
+                    
+                    # 在基础行后插入新行
+                    tbl = table._tbl
+                    base_row_element = base_row._tr
+                    new_row_element = new_row._tr
+                    
+                    # 插入到基础行后面
+                    base_row_element.addnext(new_row_element)
+                    print(f"    插入新行 (被申请人{i+1})")
+                    
+                    # 替换新行中的变量索引
+                    for cell in new_row.cells:
+                        for para in cell.paragraphs:
+                            # 替换 respondent_table_row 为 "被申请人N"
+                            para_text = self._get_paragraph_full_text(para)
+                            if '{respondent_table_row}' in para_text:
+                                self._replace_in_paragraph(para, {'respondent_table_row': f'被申请人{i+1}'})
+                            # 替换 respondent_arr[0] 为 respondent_arr[i]
+                            self._replace_respondent_index_in_paragraph(para, 0, i)
+                
+                # 修改基础行，替换为 "被申请人1"
+                for cell in base_row.cells:
+                    for para in cell.paragraphs:
+                        para_text = self._get_paragraph_full_text(para)
+                        if '{respondent_table_row}' in para_text:
+                            print(f"    修改基础行为 '被申请人1'")
+                            self._replace_in_paragraph(para, {'respondent_table_row': '被申请人1'})
+    
+    def _get_paragraph_full_text(self, para):
+        """获取段落的完整文本（处理XML级别的文本分散问题）"""
+        from docx.oxml.ns import qn
+        return ''.join(t.text or '' for t in para._element.iter(qn('w:t')))
+    
+    def _copy_table_row(self, row):
+        """复制表格行，包括所有格式"""
+        from docx.table import _Row
+        
+        # 获取行的 XML 元素
+        tr = row._tr
+        
+        # 创建行的深拷贝
+        new_tr = deepcopy(tr)
+        
+        # 创建新的 Row 对象
+        new_row = _Row(new_tr, row.table)
+        
+        return new_row
+    
+    def _replace_respondent_index_in_paragraph(self, para, old_idx, new_idx):
+        """替换段落中的被申请人数组索引"""
+        from docx.oxml.ns import qn
+        
+        # 获取段落的所有文本
+        text = ''.join(t.text or '' for t in para._element.iter(qn('w:t')))
+        if not text:
+            return
+        
+        # 替换索引
+        old_pattern = f'respondent_arr[{old_idx}]'
+        new_pattern = f'respondent_arr[{new_idx}]'
+        
+        if old_pattern not in text:
+            return
+        
+        new_text = text.replace(old_pattern, new_pattern)
+        
+        # 替换文本
+        if new_text != text:
+            first_t = None
+            for t in para._element.iter(qn('w:t')):
+                first_t = t
+                break
+            
+            if first_t is not None:
+                first_t.text = new_text
+                # 清空其他文本元素
+                for t in list(para._element.iter(qn('w:t')))[1:]:
+                    t.text = ''
     
     def _replace_in_textboxes(self, doc, data):
         """替换文本框中的变量"""
@@ -752,7 +879,9 @@ class DocumentGenerator:
         
         # 3. 被申请人信息（支持多个）
         respondent_arr = case_data.get('respondent_arr', [])
-        print(f"被申请人数量: {len(respondent_arr)}")
+        respondent_count = len(respondent_arr)
+        result['respondent_count'] = respondent_count
+        print(f"被申请人数量: {respondent_count}")
         
         # 第一个被申请人
         if respondent_arr and len(respondent_arr) > 0:
@@ -840,34 +969,40 @@ class DocumentGenerator:
         else:
             result['r_str'] = ''
         
-        # 第二个被申请人（如果存在）
-        if respondent_arr and len(respondent_arr) > 1:
-            second_respondent = respondent_arr[1]
-            result['respondent_arr[1].name'] = self._get_field(second_respondent, 'name')
-            result['respondent_arr[1].legal_name'] = self._get_field(second_respondent, 'legal_name')
-            result['respondent_arr[1].legal_mobile'] = self._get_field(
-                second_respondent, 'legal_mobile',
+        # 第二个及以后的被申请人（支持动态表格行）
+        # 最多支持10个被申请人（足以应对绝大多数案件）
+        for idx in range(1, min(len(respondent_arr), 10)):
+            respondent = respondent_arr[idx]
+            result[f'respondent_arr[{idx}].name'] = self._get_field(respondent, 'name')
+            result[f'respondent_arr[{idx}].company_address'] = self._get_field(respondent, 'company_address', ['address'])
+            result[f'respondent_arr[{idx}].legal_name'] = self._get_field(respondent, 'legal_name')
+            result[f'respondent_arr[{idx}].legal_mobile'] = self._get_field(
+                respondent, 'legal_mobile',
                 ['legal_phone', 'legal_tel', 'phone', 'mobile', 'tel', 'telephone']
             )
+            result[f'respondent_arr[{idx}].social_code'] = self._get_field(respondent, 'social_code')
             
-            agents = second_respondent.get('agents', [])
+            agents = respondent.get('agents', [])
             if agents and len(agents) > 0:
                 first_agent = agents[0]
-                result['respondent_arr[1].agents[0].name'] = self._get_field(first_agent, 'name')
-                result['respondent_arr[1].agents[0].mobile'] = self._get_field(
+                result[f'respondent_arr[{idx}].agents[0].name'] = self._get_field(first_agent, 'name')
+                result[f'respondent_arr[{idx}].agents[0].mobile'] = self._get_field(
                     first_agent, 'mobile',
                     ['phone', 'tel', 'telephone']
                 )
             else:
-                result['respondent_arr[1].agents[0].name'] = ''
-                result['respondent_arr[1].agents[0].mobile'] = ''
-        else:
-            # 确保第二个被申请人的变量也有默认值
-            result['respondent_arr[1].name'] = ''
-            result['respondent_arr[1].legal_name'] = ''
-            result['respondent_arr[1].legal_mobile'] = ''
-            result['respondent_arr[1].agents[0].name'] = ''
-            result['respondent_arr[1].agents[0].mobile'] = ''
+                result[f'respondent_arr[{idx}].agents[0].name'] = ''
+                result[f'respondent_arr[{idx}].agents[0].mobile'] = ''
+        
+        # 为不存在的被申请人设置空值（避免模板报错）
+        for idx in range(len(respondent_arr), 10):
+            result[f'respondent_arr[{idx}].name'] = ''
+            result[f'respondent_arr[{idx}].company_address'] = ''
+            result[f'respondent_arr[{idx}].legal_name'] = ''
+            result[f'respondent_arr[{idx}].legal_mobile'] = ''
+            result[f'respondent_arr[{idx}].social_code'] = ''
+            result[f'respondent_arr[{idx}].agents[0].name'] = ''
+            result[f'respondent_arr[{idx}].agents[0].mobile'] = ''
         
         # 4. 仲裁请求列表
         case_arb_request = case_data.get('case_arb_request', [])
