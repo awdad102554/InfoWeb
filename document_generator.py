@@ -49,6 +49,19 @@ class DocumentGenerator:
     
     def _generate_word(self, data):
         """生成 Word 文档"""
+        # 检查是否为被申请人送达回执模板且需要生成多页
+        if self._is_respondent_delivery_receipt() and data.get('respondent_count', 0) > 1:
+            self._generate_multi_page_for_respondents(data)
+        else:
+            self._generate_single_page(data)
+    
+    def _is_respondent_delivery_receipt(self):
+        """检查是否为被申请人送达回执模板"""
+        file_name = os.path.basename(self.template_path)
+        return '被申请人' in file_name and '送达回执' in file_name
+    
+    def _generate_single_page(self, data):
+        """生成单页 Word 文档"""
         doc = Document(self.template_path)
         
         # 替换所有段落中的变量
@@ -69,6 +82,171 @@ class DocumentGenerator:
         self._replace_in_textboxes(doc, data)
         
         doc.save(self.output_path)
+    
+    def _generate_multi_page_for_respondents(self, data):
+        """
+        为多个被申请人生成多页文档
+        每页对应一个被申请人，只有被申请人信息不同
+        使用 docxcompose 库合并多个文档
+        """
+        try:
+            from docxcompose.composer import Composer
+        except ImportError:
+            print("[警告] 未安装 docxcompose 库，使用备用方案")
+            return self._generate_multi_page_fallback(data)
+        
+        respondent_count = data.get('respondent_count', 0)
+        print(f"[生成多页被申请人送达回执] 被申请人数量: {respondent_count}")
+        
+        # 创建页面文档列表
+        page_docs = []
+        for i in range(respondent_count):
+            # 加载模板副本
+            page_doc = Document(self.template_path)
+            
+            # 为当前被申请人准备数据
+            page_data = self._prepare_page_data_for_respondent(data, i)
+            
+            # 填充数据到页面文档
+            self._fill_document_with_data(page_doc, page_data)
+            
+            page_docs.append(page_doc)
+        
+        # 使用 Composer 合并所有页面
+        master_doc = page_docs[0]
+        composer = Composer(master_doc)
+        
+        for i in range(1, len(page_docs)):
+            composer.append(page_docs[i])
+        
+        composer.save(self.output_path)
+        print(f"[生成多页被申请人送达回执] 已生成 {respondent_count} 页")
+    
+    def _generate_multi_page_fallback(self, data):
+        """
+        备用方案：当没有 docxcompose 时使用
+        为每个被申请人生成单独的文档，然后打包成zip
+        """
+        import zipfile
+        
+        respondent_count = data.get('respondent_count', 0)
+        print(f"[生成多页被申请人送达回执 - 备用方案] 被申请人数量: {respondent_count}")
+        
+        base_name = os.path.splitext(self.output_path)[0]
+        generated_files = []
+        
+        for i in range(respondent_count):
+            # 加载模板副本
+            page_doc = Document(self.template_path)
+            
+            # 为当前被申请人准备数据
+            page_data = self._prepare_page_data_for_respondent(data, i)
+            
+            # 填充数据到页面文档
+            self._fill_document_with_data(page_doc, page_data)
+            
+            # 保存为单独文件
+            output_path = f"{base_name}_被申请人{i+1}.docx"
+            page_doc.save(output_path)
+            generated_files.append(output_path)
+            print(f"  生成: {output_path}")
+        
+        # 打包成zip
+        zip_path = f"{base_name}.zip"
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for file_path in generated_files:
+                zf.write(file_path, os.path.basename(file_path))
+        
+        # 将zip路径作为输出路径
+        self.output_path = zip_path
+        print(f"[生成多页被申请人送达回执 - 备用方案] 已打包: {zip_path}")
+    
+    def _prepare_page_data_for_respondent(self, data, respondent_idx):
+        """
+        为指定被申请人准备页面数据
+        将 respondent_arr[respondent_idx] 的数据映射到 respondent_arr[0] 的位置
+        这样模板只需要使用 respondent_arr[0] 的变量
+        """
+        page_data = data.copy()
+        
+        # 保存原始的 respondent_arr[0] 数据
+        original_name = data.get('respondent_arr[0].name', '')
+        original_address = data.get('respondent_arr[0].company_address', '')
+        original_legal = data.get('respondent_arr[0].legal_name', '')
+        original_mobile = data.get('respondent_arr[0].legal_mobile', '')
+        original_social = data.get('respondent_arr[0].social_code', '')
+        
+        # 将指定被申请人的数据复制到 respondent_arr[0] 的位置
+        page_data['respondent_arr[0].name'] = data.get(f'respondent_arr[{respondent_idx}].name', original_name)
+        page_data['respondent_arr[0].company_address'] = data.get(f'respondent_arr[{respondent_idx}].company_address', original_address)
+        page_data['respondent_arr[0].legal_name'] = data.get(f'respondent_arr[{respondent_idx}].legal_name', original_legal)
+        page_data['respondent_arr[0].legal_mobile'] = data.get(f'respondent_arr[{respondent_idx}].legal_mobile', original_mobile)
+        page_data['respondent_arr[0].social_code'] = data.get(f'respondent_arr[{respondent_idx}].social_code', original_social)
+        page_data['respondent_arr[0].agents[0].name'] = data.get(f'respondent_arr[{respondent_idx}].agents[0].name', '')
+        page_data['respondent_arr[0].agents[0].mobile'] = data.get(f'respondent_arr[{respondent_idx}].agents[0].mobile', '')
+        
+        # 更新简单变量
+        page_data['respondent_name'] = page_data['respondent_arr[0].name']
+        page_data['respondent_address'] = page_data['respondent_arr[0].company_address']
+        page_data['respondent_legal_name'] = page_data['respondent_arr[0].legal_name']
+        page_data['respondent_social_code'] = page_data['respondent_arr[0].social_code']
+        
+        # 更新 {respondent} 变量（模板中可能使用的简单变量）
+        page_data['respondent'] = page_data['respondent_arr[0].name']
+        
+        return page_data
+    
+    def _fill_document_with_data(self, doc, data):
+        """使用数据填充文档"""
+        # 替换所有段落中的变量
+        for para in doc.paragraphs:
+            self._replace_in_paragraph(para, data)
+        
+        # 替换表格中的变量
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        self._replace_in_paragraph(para, data)
+        
+        # 替换文本框中的变量
+        self._replace_in_textboxes(doc, data)
+    
+    def _add_page_break(self, doc):
+        """在文档末尾添加分页符"""
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        
+        # 创建分页符元素
+        br = OxmlElement('w:br')
+        br.set(qn('w:type'), 'page')
+        
+        # 在最后一个段落添加分页符，或者创建新段落
+        if doc.paragraphs:
+            last_para = doc.paragraphs[-1]
+            run = last_para.add_run()
+            run._r.append(br)
+        else:
+            para = doc.add_paragraph()
+            run = para.add_run()
+            run._r.append(br)
+    
+    def _append_document_content(self, target_doc, source_doc):
+        """
+        将源文档的内容追加到目标文档
+        """
+        # 获取目标文档的 body 元素
+        target_body = target_doc._element
+        source_body = source_doc._element
+        
+        # 复制源文档的所有元素
+        for element in source_body:
+            # 跳过 sectPr 元素（节属性，如页面设置）
+            if element.tag.endswith('sectPr'):
+                continue
+            # 深拷贝元素并添加到目标文档
+            new_element = deepcopy(element)
+            target_body.append(new_element)
     
     def _process_respondent_table_rows(self, doc, data):
         """
@@ -897,6 +1075,8 @@ class DocumentGenerator:
             result['respondent_arr[0].company_address'] = self._get_field(first_respondent, 'company_address', ['address'])
             result['respondent_name'] = self._get_field(first_respondent, 'name')
             result['respondent_address'] = self._get_field(first_respondent, 'company_address', ['address'])
+            # 同步更新 {respondent} 变量（模板中可能使用的简单变量）
+            result['respondent'] = result['respondent_name']
             result['respondent_social_code'] = self._get_field(first_respondent, 'social_code')
             result['respondent_legal_name'] = self._get_field(first_respondent, 'legal_name')
             result['respondent_arr[0].legal_name'] = self._get_field(first_respondent, 'legal_name')
