@@ -20,19 +20,20 @@ class DocumentGenerator:
         self.output_path = output_path
         self.file_ext = os.path.splitext(template_path)[1].lower()
         
-    def generate(self, data, target_applicant=None, target_applicants=None):
+    def generate(self, data, target_applicant=None, target_applicants=None, way=None):
         """
         根据数据填充模板
         data: 立案详情API返回的数据
         target_applicant: 目标申请人姓名（可选，如果指定则只生成该申请人的文书）- 单个申请人，已废弃，请使用 target_applicants
         target_applicants: 目标申请人姓名列表（可选，如果指定则只使用这些申请人的信息填充）- 支持多申请人
+        way: 结案方式（调解/裁决），可选
         """
         # 兼容旧版本：如果传了 target_applicant 但没传 target_applicants
         if target_applicant and not target_applicants:
             target_applicants = [target_applicant]
         
         # 预处理数据 - 将复杂表达式转换为简单变量
-        processed_data = self._preprocess_data(data, target_applicants=target_applicants)
+        processed_data = self._preprocess_data(data, target_applicants=target_applicants, way=way)
         
         print(f"预处理后的数据: {processed_data}")
         
@@ -695,7 +696,7 @@ class DocumentGenerator:
         
         return default
     
-    def _preprocess_data(self, data, target_applicant=None, target_applicants=None):
+    def _preprocess_data(self, data, target_applicant=None, target_applicants=None, way=None):
         """
         预处理数据，计算所有变量值
         
@@ -703,12 +704,16 @@ class DocumentGenerator:
             data: 案件数据
             target_applicant: 目标申请人姓名（可选，单个）- 已废弃，请使用 target_applicants
             target_applicants: 目标申请人姓名列表（可选，支持多申请人）
+            way: 结案方式（调解/裁决），可选
         """
         result = {}
         
         # 兼容旧版本
         if target_applicant and not target_applicants:
             target_applicants = [target_applicant]
+        
+        # 添加结案方式变量 {way}
+        result['way'] = way or ''
         
         # 获取案件数据（处理嵌套结构）
         # 尝试多种可能的数据结构

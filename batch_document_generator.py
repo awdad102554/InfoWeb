@@ -20,7 +20,7 @@ class BatchDocumentGenerator:
     def __init__(self, doc_templates_dir):
         self.doc_templates_dir = doc_templates_dir
     
-    def generate_batch(self, template_paths, case_data, case_no, file_applicant_map=None):
+    def generate_batch(self, template_paths, case_data, case_no, file_applicant_map=None, way=None):
         """
         批量生成文档 - 每个模板独立生成，然后打包成 zip
         
@@ -31,6 +31,7 @@ class BatchDocumentGenerator:
             file_applicant_map: 文件与申请人的映射列表，格式: [{path, applicant_names, applicant_ids}, ...]
                            applicant_names: 申请人姓名列表（多选）
                            applicant_ids: 申请人ID列表（多选）
+            way: 结案方式（调解/裁决），可选
         
         Returns:
             dict: {
@@ -78,9 +79,9 @@ class BatchDocumentGenerator:
             # 确保输出目录存在
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # 使用 DocumentGenerator 生成（传递多个申请人信息）
+            # 使用 DocumentGenerator 生成（传递多个申请人信息和结案方式）
             generator = DocumentGenerator(full_path, output_path)
-            generator.generate(case_data, target_applicants=target_applicants)
+            generator.generate(case_data, target_applicants=target_applicants, way=way)
             
             generated_files.append(output_path)
             print(f"生成: {output_filename}")

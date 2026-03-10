@@ -787,6 +787,14 @@
         let currentCaseId = null;  // 当前案件ID
         let currentCaseNo = '';    // 当前案件编号
         let currentApplicants = []; // 当前案件的申请人列表
+        
+        // 需要选择调解/裁决的特殊模板文件路径列表
+        const WAY_REQUIRED_TEMPLATES = [
+            '3-调、裁、决文书/03申请人送达回执调、裁、决定书3.docx',
+            '3-调、裁、决文书/03被申请人送达回执调、裁、决定书第三人3.docx',
+            '3-调、裁、决文书/05第三人送达回执3.docx'
+        ];
+        let selectedWay = null; // 用户选择的结案方式：'调解' 或 '裁决'
 
         // 打开生成弹窗
         async function openGenerateModal(caseId, caseNo) {
@@ -801,6 +809,7 @@
             selectedLevel2 = null;
             selectedLevel3 = null;
             selectedFiles = [];
+            selectedWay = null; // 重置结案方式选择
             currentApplicants = [];
             updateSelectedFilesList();
             updatePreview();
@@ -1076,6 +1085,115 @@
             return isWithdrawalDoc && isTargetFile;
         }
         
+        // 检查文件是否需要选择调解/裁决
+        function requiresWaySelection(filePath) {
+            return WAY_REQUIRED_TEMPLATES.some(templatePath => filePath.includes(templatePath));
+        }
+        
+        // 检查当前已选文件中是否包含需要选择way的模板
+        function hasWayRequiredTemplate() {
+            return selectedFiles.some(file => requiresWaySelection(file.path));
+        }
+        
+        // 显示调解/裁决选择对话框
+        function showWaySelector(callback) {
+            // 创建对话框容器
+            const modal = document.createElement('div');
+            modal.id = 'waySelectorModal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4';
+            
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-[400px] max-w-[95vw] flex flex-col">
+                    <div class="bg-gradient-to-r from-purple-600 to-purple-800 text-white px-6 py-4 rounded-t-xl flex justify-between items-center">
+                        <div>
+                            <h3 class="text-lg font-bold"><i class="fas fa-balance-scale mr-2"></i>选择结案方式</h3>
+                            <p class="text-sm opacity-90 mt-1">请选择调解或裁决</p>
+                        </div>
+                        <button onclick="closeWaySelector()" class="text-white hover:text-gray-200 text-2xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <p class="text-gray-600 text-sm mb-4">您选择了送达回执文书，请选择结案方式：</p>
+                        <div class="space-y-3">
+                            <label class="way-option flex items-center p-4 rounded-lg border-2 border-gray-200 hover:border-purple-300 cursor-pointer transition" onclick="selectWayOption('调解')">
+                                <input type="radio" name="wayOption" value="调解" class="w-4 h-4 text-purple-600 border-gray-300 focus:ring-purple-500">
+                                <div class="ml-3 flex-1">
+                                    <span class="font-medium text-gray-800">调解</span>
+                                    <p class="text-xs text-gray-500 mt-1">当事人达成调解协议，以调解方式结案</p>
+                                </div>
+                            </label>
+                            <label class="way-option flex items-center p-4 rounded-lg border-2 border-gray-200 hover:border-purple-300 cursor-pointer transition" onclick="selectWayOption('裁决')">
+                                <input type="radio" name="wayOption" value="裁决" class="w-4 h-4 text-purple-600 border-gray-300 focus:ring-purple-500">
+                                <div class="ml-3 flex-1">
+                                    <span class="font-medium text-gray-800">裁决</span>
+                                    <p class="text-xs text-gray-500 mt-1">仲裁庭作出裁决，以裁决方式结案</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                        <button onclick="closeWaySelector()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                            取消
+                        </button>
+                        <button onclick="confirmWaySelection()" id="confirmWayBtn" disabled
+                            class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-check mr-2"></i>确认选择
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // 点击外部关闭
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeWaySelector();
+                }
+            });
+            
+            // 保存回调函数
+            window.waySelectorCallback = callback;
+        }
+        
+        // 关闭结案方式选择对话框
+        window.closeWaySelector = function() {
+            const modal = document.getElementById('waySelectorModal');
+            if (modal) {
+                modal.remove();
+            }
+            delete window.waySelectorCallback;
+        };
+        
+        // 选择结案方式选项
+        window.selectWayOption = function(value) {
+            const radio = document.querySelector(`input[name="wayOption"][value="${value}"]`);
+            if (radio) {
+                radio.checked = true;
+            }
+            // 更新选中样式
+            document.querySelectorAll('.way-option').forEach(option => {
+                option.classList.remove('border-purple-500', 'bg-purple-50');
+                option.classList.add('border-gray-200');
+            });
+            const selectedOption = document.querySelector(`input[name="wayOption"][value="${value}"]`).closest('.way-option');
+            selectedOption.classList.remove('border-gray-200');
+            selectedOption.classList.add('border-purple-500', 'bg-purple-50');
+            
+            // 启用确认按钮
+            document.getElementById('confirmWayBtn').disabled = false;
+        };
+        
+        // 确认结案方式选择
+        window.confirmWaySelection = function() {
+            const selectedRadio = document.querySelector('input[name="wayOption"]:checked');
+            if (selectedRadio && window.waySelectorCallback) {
+                window.waySelectorCallback(selectedRadio.value);
+            }
+            closeWaySelector();
+        };
+        
         // 显示申请人选择对话框
         function showApplicantSelector(fileInfo, callback) {
             // 检查是否有可用的申请人
@@ -1250,6 +1368,21 @@
                 return;
             }
             
+            // 检查是否需要选择调解/裁决
+            if (requiresWaySelection(filePath)) {
+                // 如果已经选择过way，直接添加
+                if (selectedWay) {
+                    addFileWithWay(selectedWay);
+                } else {
+                    // 需要弹窗让用户选择
+                    showWaySelector(function(way) {
+                        selectedWay = way;
+                        addFileWithWay(way);
+                    });
+                }
+                return;
+            }
+            
             // 检查是否已存在
             if (selectedFiles.some(f => f.path === selectedLevel3.path)) {
                 return;
@@ -1257,6 +1390,25 @@
             
             // 添加到列表
             selectedFiles.push(selectedLevel3);
+            updateSelectedFilesList();
+            updatePreview();
+            updateAddButton();
+            renderLevel3(); // 刷新第三级显示
+        }
+        
+        // 添加带有way值的文件
+        function addFileWithWay(way) {
+            // 检查是否已存在
+            if (selectedFiles.some(f => f.path === selectedLevel3.path)) {
+                return;
+            }
+            
+            // 添加到列表，并附带way值
+            const fileWithWay = {
+                ...selectedLevel3,
+                way: way
+            };
+            selectedFiles.push(fileWithWay);
             updateSelectedFilesList();
             updatePreview();
             updateAddButton();
@@ -1292,6 +1444,9 @@
                 // 如果文件有申请人信息，显示标签
                 const applicantBadge = file.applicantName ? 
                     `<span class="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">申请人: ${escapeHtml(file.applicantName)}</span>` : '';
+                // 如果文件有结案方式（way），显示标签
+                const wayBadge = file.way ? 
+                    `<span class="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">${escapeHtml(file.way)}</span>` : '';
                 
                 return `
                 <div class="flex items-center justify-between p-2 mb-2 bg-white rounded border border-gray-200 hover:shadow-sm transition">
@@ -1299,6 +1454,7 @@
                         <i class="fas ${extIcon} ${isDocx ? 'text-blue-500' : isXlsx ? 'text-green-500' : 'text-gray-500'} mr-2"></i>
                         <span class="text-sm text-gray-700 truncate" title="${escapeHtml(file.displayName)}">${escapeHtml(file.displayName)}</span>
                         ${applicantBadge}
+                        ${wayBadge}
                     </div>
                     <button onclick="removeSelectedFile(${index})" class="ml-2 text-gray-400 hover:text-red-500 transition">
                         <i class="fas fa-times"></i>
@@ -1312,6 +1468,16 @@
         function removeSelectedFile(index) {
             const removedFile = selectedFiles[index];
             selectedFiles.splice(index, 1);
+            
+            // 检查是否还有需要way选择的模板
+            if (removedFile && requiresWaySelection(removedFile.path)) {
+                const stillHasWayRequiredTemplate = hasWayRequiredTemplate();
+                if (!stillHasWayRequiredTemplate) {
+                    // 如果删除后没有需要way的模板了，清除way值
+                    selectedWay = null;
+                }
+            }
+            
             updateSelectedFilesList();
             updatePreview();
             updateAddButton();
@@ -1330,6 +1496,7 @@
         // 清空所有已选文件
         function clearAllSelected() {
             selectedFiles = [];
+            selectedWay = null; // 清空way值
             updateSelectedFilesList();
             updatePreview();
             updateAddButton();
@@ -1403,6 +1570,11 @@
                         applicant_ids: f.applicantIds || (f.applicantId ? [f.applicantId] : null)
                     }))
                 };
+                
+                // 如果有选择的结案方式，添加到请求数据中
+                if (selectedWay) {
+                    requestData.way = selectedWay;
+                }
                 console.log('生成文档请求:', requestData);
                 
                 // 调用批量生成API
