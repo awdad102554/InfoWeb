@@ -44,6 +44,15 @@ login_manager = get_login_manager()
 company_query = get_company_query()
 db_manager = get_db_manager()
 
+# 添加全局缓存控制头
+@app.after_request
+def add_cache_control_headers(response):
+    """为所有响应添加缓存控制头"""
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 # ============================================
 # 页面路由
 # ============================================

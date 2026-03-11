@@ -357,6 +357,12 @@ LOGIN_PASSWORD = "eyJpdiI6..."
 FLASK_HOST = "0.0.0.0"
 FLASK_PORT = 5000
 FLASK_DEBUG = True
+
+# 缓存控制（app.py 中全局配置）
+# 所有响应自动添加以下头部，禁止浏览器缓存动态内容：
+# Cache-Control: no-cache, no-store, must-revalidate
+# Pragma: no-cache
+# Expires: 0
 ```
 
 ---
@@ -434,6 +440,7 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十一、关键文件修改历史
 
+- **2026-03-11**: 添加全局缓存控制头，禁止浏览器缓存动态内容
 - **2026-03-11**: 添加反申请相关变量 `{re_applicant}`（反申请申请人），从 `review_matter` 中第一个反申请记录获取
 - **2026-03-11**: 修改多页生成分页条件，必须同时满足：文件名匹配、被申请人>1、**模板中包含 `{respondent}` 变量**，缺少变量则单页生成
 - **2026-03-11**: 扩展多页生成模板匹配规则，文件名同时包含"被申请人"和"通知书"时也触发多页生成
