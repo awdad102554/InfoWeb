@@ -50,7 +50,10 @@ class DocumentGenerator:
     def _generate_word(self, data):
         """生成 Word 文档"""
         # 检查是否为被申请人送达回执模板且需要生成多页
-        if self._is_respondent_delivery_receipt() and data.get('respondent_count', 0) > 1:
+        # 同时需要模板中实际使用了 {respondent} 变量才分页
+        if (self._is_respondent_delivery_receipt() and 
+            data.get('respondent_count', 0) > 1 and 
+            self._template_has_respondent_variable()):
             self._generate_multi_page_for_respondents(data)
         else:
             self._generate_single_page(data)
@@ -66,6 +69,33 @@ class DocumentGenerator:
         has_delivery = '送达回执' in file_name
         has_notice = '通知书' in file_name
         return has_respondent and (has_delivery or has_notice)
+    
+    def _template_has_respondent_variable(self):
+        """
+        检查模板中是否包含 {respondent} 变量
+        只有包含该变量的模板才需要按被申请人数分页生成
+        """
+        try:
+            doc = Document(self.template_path)
+            
+            # 检查所有段落
+            for para in doc.paragraphs:
+                if '{respondent}' in para.text:
+                    return True
+            
+            # 检查所有表格单元格
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for para in cell.paragraphs:
+                            if '{respondent}' in para.text:
+                                return True
+            
+            return False
+        except Exception as e:
+            print(f"[检查模板变量] 检查失败: {e}")
+            # 检查失败时，默认返回 False（不分页）
+            return False
     
     def _generate_single_page(self, data):
         """生成单页 Word 文档"""
@@ -1404,6 +1434,9 @@ class DocumentGenerator:
             result['re_at_d'] = ''
             result['中文_re_at'] = ''
         
+        # 14. 反申请申请人（从 review_matter 中查找第一个反申请记录的 applicant 字段）
+        result['re_applicant'] = self._get_reverse_request_applicant(case_data)
+        
         return result
     
     def _get_chinese_date(self, date=None):
@@ -1551,6 +1584,26 @@ class DocumentGenerator:
                     start_at = matter.get('start_at', '')
                     if start_at:
                         return start_at
+        
+        return ''
+    
+    def _get_reverse_request_applicant(self, case_data):
+        """
+        获取反申请申请人（从 review_matter 中查找 apply_matter 包含'反申请'字样的条目，取 applicant 字段）
+        取第一个匹配的反申请记录
+        """
+        review_matter = case_data.get('review_matter', [])
+        if not review_matter or not isinstance(review_matter, list):
+            return ''
+        
+        # 查找 apply_matter 包含'反申请'字样的条目
+        for matter in review_matter:
+            if isinstance(matter, dict):
+                apply_matter = matter.get('apply_matter', '') or ''
+                if '反申请' in apply_matter:
+                    applicant = matter.get('applicant', '')
+                    if applicant:
+                        return applicant
         
         return ''
 
