@@ -56,9 +56,16 @@ class DocumentGenerator:
             self._generate_single_page(data)
     
     def _is_respondent_delivery_receipt(self):
-        """检查是否为被申请人送达回执模板"""
+        """
+        检查是否为被申请人相关多页模板
+        包括：被申请人送达回执、被申请人通知书等
+        这类模板在有多个被申请人时需要为每个被申请人生成一页
+        """
         file_name = os.path.basename(self.template_path)
-        return '被申请人' in file_name and '送达回执' in file_name
+        has_respondent = '被申请人' in file_name
+        has_delivery = '送达回执' in file_name
+        has_notice = '通知书' in file_name
+        return has_respondent and (has_delivery or has_notice)
     
     def _generate_single_page(self, data):
         """生成单页 Word 文档"""
@@ -87,20 +94,18 @@ class DocumentGenerator:
         """
         为多个被申请人生成多页文档
         每页对应一个被申请人，只有被申请人信息不同
-        使用 docxcompose 库合并多个文档
+        手动合并文档并添加分页符，确保每个被申请人的内容独立成页
         """
-        try:
-            from docxcompose.composer import Composer
-        except ImportError:
-            print("[警告] 未安装 docxcompose 库，使用备用方案")
-            return self._generate_multi_page_fallback(data)
-        
         respondent_count = data.get('respondent_count', 0)
-        print(f"[生成多页被申请人送达回执] 被申请人数量: {respondent_count}")
+        print(f"[生成多页被申请人文档] 被申请人数量: {respondent_count}")
         
-        # 创建页面文档列表
-        page_docs = []
-        for i in range(respondent_count):
+        # 加载第一个被申请人的文档作为主文档
+        master_doc = Document(self.template_path)
+        page_data = self._prepare_page_data_for_respondent(data, 0)
+        self._fill_document_with_data(master_doc, page_data)
+        
+        # 为后续每个被申请人添加分页符并追加内容
+        for i in range(1, respondent_count):
             # 加载模板副本
             page_doc = Document(self.template_path)
             
@@ -110,17 +115,14 @@ class DocumentGenerator:
             # 填充数据到页面文档
             self._fill_document_with_data(page_doc, page_data)
             
-            page_docs.append(page_doc)
+            # 在 master_doc 末尾添加分页符
+            self._add_page_break(master_doc)
+            
+            # 将 page_doc 的内容追加到 master_doc
+            self._append_document_content(master_doc, page_doc)
         
-        # 使用 Composer 合并所有页面
-        master_doc = page_docs[0]
-        composer = Composer(master_doc)
-        
-        for i in range(1, len(page_docs)):
-            composer.append(page_docs[i])
-        
-        composer.save(self.output_path)
-        print(f"[生成多页被申请人送达回执] 已生成 {respondent_count} 页")
+        master_doc.save(self.output_path)
+        print(f"[生成多页被申请人文档] 已生成 {respondent_count} 份（每份独立分页）")
     
     def _generate_multi_page_fallback(self, data):
         """
@@ -890,9 +892,6 @@ class DocumentGenerator:
         if target_applicant and not target_applicants:
             target_applicants = [target_applicant]
         
-        # 添加结案方式变量 {way}
-        result['way'] = way or ''
-        
         # 获取案件数据（处理嵌套结构）
         # 尝试多种可能的数据结构
         case_data = data
@@ -908,6 +907,19 @@ class DocumentGenerator:
         
         print(f"案件数据 keys: {case_data.keys() if hasattr(case_data, 'keys') else 'N/A'}")
         print(f"目标申请人列表: {target_applicants}")
+        
+        # 添加结案方式变量 {way}
+        # 优先从案件数据中获取 end_way（调解/裁决）
+        end_way = case_data.get('end_way', '')
+        if end_way in ['调解', '裁决']:
+            result['way'] = end_way
+            print(f"[结案方式] 从案件数据获取: {end_way}")
+        elif way:
+            # end_way 无效时，使用传入的 way 参数（用户手动选择）
+            result['way'] = way
+            print(f"[结案方式] 使用用户选择的值: {way}")
+        else:
+            result['way'] = ''
         
         # 1. 基础字段
         case_no_raw = case_data.get('case_no', '')
@@ -1075,8 +1087,8 @@ class DocumentGenerator:
             result['respondent_arr[0].company_address'] = self._get_field(first_respondent, 'company_address', ['address'])
             result['respondent_name'] = self._get_field(first_respondent, 'name')
             result['respondent_address'] = self._get_field(first_respondent, 'company_address', ['address'])
-            # 同步更新 {respondent} 变量（模板中可能使用的简单变量）
-            result['respondent'] = result['respondent_name']
+            # 注意：{respondent} 保持原始值，不覆盖为 respondent_name
+            # 只有被申请人送达回执模板才会在 _prepare_page_data_for_respondent 中逐个替换
             result['respondent_social_code'] = self._get_field(first_respondent, 'social_code')
             result['respondent_legal_name'] = self._get_field(first_respondent, 'legal_name')
             result['respondent_arr[0].legal_name'] = self._get_field(first_respondent, 'legal_name')

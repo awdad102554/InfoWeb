@@ -7,7 +7,14 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>立案查询 - 劳动仲裁信息查询综合服务平台</title>
-    <meta name="version" content="v1.1">
+    <meta name="version" content="v1.2">
+    <script>
+        // 强制清除缓存并刷新页面（仅执行一次）
+        if (!window.location.href.includes('_nocache')) {
+            const newUrl = window.location.href + (window.location.href.includes('?') ? '&' : '?') + '_nocache=' + Date.now();
+            window.history.replaceState({}, '', newUrl);
+        }
+    </script>
     <script src="{{ url_for('static', filename='js/tailwindcss.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/fontawesome.all.min.css') }}">
     <style>
@@ -383,7 +390,14 @@
                 console.log('请求参数:', paramsObj);
                 console.log('当前页码 currentPage:', currentPage);
                 
-                const response = await fetch(requestUrl);
+                const response = await fetch(requestUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache'
+                    },
+                    cache: 'no-store'
+                });
                 
                 console.log('响应状态:', response.status);
                 console.log('响应头:', [...response.headers.entries()]);
@@ -787,6 +801,7 @@
         let currentCaseId = null;  // 当前案件ID
         let currentCaseNo = '';    // 当前案件编号
         let currentApplicants = []; // 当前案件的申请人列表
+        let currentCaseEndWay = ''; // 当前案件的结案方式（调解/裁决）
         
         // 需要选择调解/裁决的特殊模板文件路径列表
         const WAY_REQUIRED_TEMPLATES = [
@@ -811,6 +826,7 @@
             selectedFiles = [];
             selectedWay = null; // 重置结案方式选择
             currentApplicants = [];
+            currentCaseEndWay = ''; // 重置案件结案方式
             updateSelectedFilesList();
             updatePreview();
             
@@ -841,10 +857,21 @@
                         name: app.name || app.applicant_name || '',
                         selected: false
                     })).filter(app => app.name);
+                    
+                    // 获取案件结案方式（调解/裁决）
+                    const endWay = data.end_way || '';
+                    if (endWay === '调解' || endWay === '裁决') {
+                        currentCaseEndWay = endWay;
+                        console.log(`[案件${caseId}] 自动获取结案方式: ${endWay}`);
+                    } else {
+                        currentCaseEndWay = '';
+                        console.log(`[案件${caseId}] 案件无有效结案方式，需要用户选择`);
+                    }
                 }
             } catch (error) {
                 console.error('加载申请人信息失败:', error);
                 currentApplicants = [];
+                currentCaseEndWay = '';
             }
         }
 
@@ -854,6 +881,8 @@
             currentCaseId = null;
             currentCaseNo = '';
             selectedFiles = [];
+            selectedWay = null; // 重置用户手动选择的结案方式
+            currentCaseEndWay = '';
         }
 
         // 加载文档模板树
@@ -1370,8 +1399,13 @@
             
             // 检查是否需要选择调解/裁决
             if (requiresWaySelection(filePath)) {
-                // 如果已经选择过way，直接添加
-                if (selectedWay) {
+                // 优先使用案件信息中的结案方式
+                if (currentCaseEndWay) {
+                    // 案件已有结案方式，直接使用
+                    console.log(`使用案件结案方式: ${currentCaseEndWay}`);
+                    addFileWithWay(currentCaseEndWay);
+                } else if (selectedWay) {
+                    // 如果已经选择过way，直接添加
                     addFileWithWay(selectedWay);
                 } else {
                     // 需要弹窗让用户选择
@@ -1571,9 +1605,10 @@
                     }))
                 };
                 
-                // 如果有选择的结案方式，添加到请求数据中
-                if (selectedWay) {
-                    requestData.way = selectedWay;
+                // 如果有结案方式（优先使用案件自动获取的，其次使用用户手动选择的），添加到请求数据中
+                const finalWay = currentCaseEndWay || selectedWay;
+                if (finalWay) {
+                    requestData.way = finalWay;
                 }
                 console.log('生成文档请求:', requestData);
                 
