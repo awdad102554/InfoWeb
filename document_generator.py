@@ -245,7 +245,7 @@ class DocumentGenerator:
         self._replace_in_textboxes(doc, data)
     
     def _add_page_break(self, doc):
-        """在文档末尾添加分页符"""
+        """在文档末尾添加分页符，确保分页符在 sectPr 之前"""
         from docx.oxml import OxmlElement
         from docx.oxml.ns import qn
         
@@ -253,32 +253,54 @@ class DocumentGenerator:
         br = OxmlElement('w:br')
         br.set(qn('w:type'), 'page')
         
-        # 在最后一个段落添加分页符，或者创建新段落
-        if doc.paragraphs:
-            last_para = doc.paragraphs[-1]
-            run = last_para.add_run()
-            run._r.append(br)
-        else:
-            para = doc.add_paragraph()
-            run = para.add_run()
-            run._r.append(br)
+        # 创建新段落专门用于分页符
+        para = doc.add_paragraph()
+        run = para.add_run()
+        run._r.append(br)
+        
+        # 确保分页符段落在 sectPr 之前
+        # doc._element 是文档元素，body 是第一个子元素
+        body = doc._element[0]
+        sectPr = None
+        for element in body:
+            if element.tag.endswith('sectPr'):
+                sectPr = element
+                break
+        
+        if sectPr is not None:
+            # 将分页符段落移动到 sectPr 之前
+            para_element = para._element
+            sectPr.addprevious(para_element)
     
     def _append_document_content(self, target_doc, source_doc):
         """
         将源文档的内容追加到目标文档
+        确保内容插入到 sectPr（节属性）之前，避免分页符失效
         """
-        # 获取目标文档的 body 元素
-        target_body = target_doc._element
-        source_body = source_doc._element
+        # doc._element 是文档元素，body 是第一个子元素
+        target_body = target_doc._element[0]
+        source_body = source_doc._element[0]
+        
+        # 找到目标文档的 sectPr 元素（通常在 body 末尾）
+        target_sectPr = None
+        for element in target_body:
+            if element.tag.endswith('sectPr'):
+                target_sectPr = element
+                break
         
         # 复制源文档的所有元素
         for element in source_body:
             # 跳过 sectPr 元素（节属性，如页面设置）
             if element.tag.endswith('sectPr'):
                 continue
-            # 深拷贝元素并添加到目标文档
+            # 深拷贝元素
             new_element = deepcopy(element)
-            target_body.append(new_element)
+            
+            # 如果有 sectPr，在其之前插入；否则直接追加到末尾
+            if target_sectPr is not None:
+                target_sectPr.addprevious(new_element)
+            else:
+                target_body.append(new_element)
     
     def _process_respondent_table_rows(self, doc, data):
         """
