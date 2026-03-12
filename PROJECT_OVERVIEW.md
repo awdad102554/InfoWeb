@@ -492,6 +492,7 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-12**: 修复立案详情页状态显示问题，添加字符串类型状态映射（`templates/handle_detail.html`）
 - **2026-03-12**: 修复立案查询等接口登录失效问题，添加401自动重新登录重试机制（`app.py`）
 - **2026-03-12**: 调整立案查询界面表格列宽：序号40px、案件编号75px、被申请人80px、操作192px（`templates/handle_query.html`）
 - **2026-03-12**: 立案查询案件编号显示优化，去除"明永劳人仲案字"前缀，只显示`[20XX]XX号`部分（`templates/handle_query.html`）
