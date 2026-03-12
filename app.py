@@ -969,6 +969,30 @@ def query_receive():
             timeout=30
         )
         
+        # 如果返回401，尝试重新登录后重试
+        if response.status_code == 401:
+            logger.warning("收件查询: 内部服务返回401，尝试重新登录...")
+            login_manager.current_auth_key = None
+            login_manager.current_session_id = None
+            
+            if not login_manager.check_and_renew_login():
+                logger.error("收件查询: 重新登录失败")
+                return jsonify({
+                    'code': 401,
+                    'message': '登录已失效，请刷新页面重试',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 401
+            
+            # 获取新的认证头并重试
+            headers = login_manager.get_auth_headers()
+            response = requests.get(
+                INTERNAL_API_BASE,
+                headers=headers,
+                params=params,
+                timeout=30
+            )
+        
         # 返回结果
         if response.status_code == 200:
             data = response.json()
@@ -1099,6 +1123,29 @@ def query_receive_detail():
             headers=headers,
             timeout=30
         )
+        
+        # 如果返回401，尝试重新登录后重试
+        if response.status_code == 401:
+            logger.warning("收件详情: 内部服务返回401，尝试重新登录...")
+            login_manager.current_auth_key = None
+            login_manager.current_session_id = None
+            
+            if not login_manager.check_and_renew_login():
+                logger.error("收件详情: 重新登录失败")
+                return jsonify({
+                    'code': 401,
+                    'message': '登录已失效，请刷新页面重试',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 401
+            
+            # 获取新的认证头并重试
+            headers = login_manager.get_auth_headers()
+            response = requests.get(
+                detail_url,
+                headers=headers,
+                timeout=30
+            )
         
         # 返回结果
         if response.status_code == 200:
@@ -1241,6 +1288,30 @@ def query_reserve():
             timeout=30
         )
         
+        # 如果返回401，尝试重新登录后重试
+        if response.status_code == 401:
+            logger.warning("预约查询: 内部服务返回401，尝试重新登录...")
+            login_manager.current_auth_key = None
+            login_manager.current_session_id = None
+            
+            if not login_manager.check_and_renew_login():
+                logger.error("预约查询: 重新登录失败")
+                return jsonify({
+                    'code': 401,
+                    'message': '登录已失效，请刷新页面重试',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 401
+            
+            # 获取新的认证头并重试
+            headers = login_manager.get_auth_headers()
+            response = requests.get(
+                RESERVE_API_BASE,
+                headers=headers,
+                params=params,
+                timeout=30
+            )
+        
         # 返回结果
         if response.status_code == 200:
             data = response.json()
@@ -1374,6 +1445,29 @@ def query_reserve_detail():
             timeout=30
         )
         
+        # 如果返回401，尝试重新登录后重试
+        if response.status_code == 401:
+            logger.warning("预约详情: 内部服务返回401，尝试重新登录...")
+            login_manager.current_auth_key = None
+            login_manager.current_session_id = None
+            
+            if not login_manager.check_and_renew_login():
+                logger.error("预约详情: 重新登录失败")
+                return jsonify({
+                    'code': 401,
+                    'message': '登录已失效，请刷新页面重试',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 401
+            
+            # 获取新的认证头并重试
+            headers = login_manager.get_auth_headers()
+            response = requests.get(
+                detail_url,
+                headers=headers,
+                timeout=30
+            )
+        
         # 返回结果
         if response.status_code == 200:
             data = response.json()
@@ -1506,6 +1600,30 @@ def query_handle():
             params=params,
             timeout=30
         )
+        
+        # 如果返回401，尝试重新登录后重试
+        if response.status_code == 401:
+            logger.warning("内部服务返回401，尝试重新登录...")
+            login_manager.current_auth_key = None
+            login_manager.current_session_id = None
+            
+            if not login_manager.check_and_renew_login():
+                logger.error("重新登录失败")
+                return jsonify({
+                    'code': 401,
+                    'message': '登录已失效，请刷新页面重试',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 401
+            
+            # 获取新的认证头并重试
+            headers = login_manager.get_auth_headers()
+            response = requests.get(
+                HANDLE_API_BASE,
+                headers=headers,
+                params=params,
+                timeout=30
+            )
         
         # 返回结果
         if response.status_code == 200:
@@ -1643,6 +1761,30 @@ def query_handle_detail():
             json={'id': item_id},
             timeout=30
         )
+        
+        # 如果返回401，尝试重新登录后重试
+        if response.status_code == 401:
+            logger.warning("内部服务返回401，尝试重新登录...")
+            login_manager.current_auth_key = None
+            login_manager.current_session_id = None
+            
+            if not login_manager.check_and_renew_login():
+                logger.error("重新登录失败")
+                return jsonify({
+                    'code': 401,
+                    'message': '登录已失效，请刷新页面重试',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 401
+            
+            # 获取新的认证头并重试
+            headers = login_manager.get_auth_headers()
+            response = requests.post(
+                detail_url,
+                headers=headers,
+                json={'id': item_id},
+                timeout=30
+            )
         
         # 返回结果
         if response.status_code == 200:

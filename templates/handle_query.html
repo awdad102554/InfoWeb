@@ -117,14 +117,14 @@
                 <table class="w-full">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-16">序号</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-48">案件编号</th>
+                            <th class="px-2 py-3 text-left text-sm font-semibold text-gray-700 w-[40px]">序号</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-[75px]">案件编号</th>
                             <th class="px-2 py-3 text-left text-sm font-semibold text-gray-700 w-24">申请人</th>
-                            <th class="px-2 py-3 text-left text-sm font-semibold text-gray-700 w-32">被申请人</th>
+                            <th class="px-2 py-3 text-left text-sm font-semibold text-gray-700 w-[80px]">被申请人</th>
                             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">案由</th>
                             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-28">立案日期</th>
                             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-24">状态</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-44">操作</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-48">操作</th>
                         </tr>
                     </thead>
                     <tbody id="resultTableBody" class="divide-y divide-gray-200">
@@ -496,8 +496,8 @@
                 
                 return `
                     <tr class="row-expandable fade-in" onclick="toggleDetail(${index})">
-                        <td class="px-4 py-3 text-sm text-gray-900">${seqNo}</td>
-                        <td class="px-4 py-3 text-sm font-medium text-purple-600">${escapeHtml(item.case_no || '-')}</td>
+                        <td class="px-2 py-3 text-sm text-gray-900">${seqNo}</td>
+                        <td class="px-4 py-3 text-sm font-medium text-purple-600">${formatCaseNo(item.case_no)}</td>
                         <td class="px-2 py-3 text-sm text-gray-700 truncate" title="${escapeHtml(applicantName)}">${escapeHtml(applicantName)}</td>
                         <td class="px-4 py-3 text-sm text-gray-700 truncate max-w-xs" title="${escapeHtml(respondentName)}">${escapeHtml(respondentName)}</td>
                         <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(caseReason)}</td>
@@ -748,6 +748,13 @@
             const div = document.createElement('div');
             div.textContent = String(text);
             return div.innerHTML;
+        }
+
+        // 格式化案件编号显示（去掉前缀）
+        function formatCaseNo(caseNo) {
+            if (!caseNo) return '-';
+            // 去掉"明永劳人仲案字"前缀，只显示[20XX]XX号
+            return escapeHtml(caseNo.replace(/明永劳人仲案字/, ''));
         }
 
         // 格式化日期
