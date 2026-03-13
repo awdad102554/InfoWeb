@@ -102,7 +102,18 @@ def handle_detail_page():
 @app.route('/award/make')
 def award_make_page():
     """裁决书制作页面"""
-    return render_template('award_make.html')
+    # 根据客户端IP自动选择Dify地址
+    client_ip = request.remote_addr
+    
+    # 判断客户端所属网段
+    if client_ip.startswith('10.99.144.'):
+        # 10.99.144.x 网段使用 10.99.144.29
+        dify_url = 'http://10.99.144.29:8020'
+    else:
+        # 其他网段（包括192.168.123.x）使用 192.168.123.16
+        dify_url = 'http://192.168.123.16:8020'
+    
+    return render_template('award_make.html', dify_url=dify_url)
 
 
 @app.route('/reserve_query')

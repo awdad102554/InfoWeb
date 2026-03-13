@@ -492,6 +492,7 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-13**: 裁决书制作页面添加 Dify AI 助手 iframe 嵌入，根据客户端 IP 自动切换 Dify 地址（192.168.123.16 或 10.99.144.29），删除 Flask 代理代码，改为客户端直接访问（`app.py`, `templates/award_make.html`）
 - **2026-03-13**: 添加裁决书制作功能，包括新增页面 `/award/make`、API 接口 `/api/award/elements/<case_id>`、数据库表 `裁决书要素保存`，支持裁决书要素的保存和查询（`app.py`, `templates/award_make.html`）
 - **2026-03-13**: 将 `DatabaseManager._get_connection()` 改为公共方法 `get_connection()`，供裁决书 API 使用（`modules/database.py`）
 - **2026-03-12**: 修复立案详情页状态显示问题，添加字符串类型状态映射（`templates/handle_detail.html`）
