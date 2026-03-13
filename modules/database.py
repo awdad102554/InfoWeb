@@ -44,8 +44,12 @@ class DatabaseManager:
             logger.error(f"数据库连接池初始化失败: {e}")
             self.pool = None
     
+    def get_connection(self, max_retries=3):
+        """从连接池获取连接，带重试机制（公共方法）"""
+        return self._get_connection(max_retries)
+    
     def _get_connection(self, max_retries=3):
-        """从连接池获取连接，带重试机制"""
+        """从连接池获取连接，带重试机制（内部方法）"""
         for attempt in range(max_retries):
             try:
                 if self.pool is None:

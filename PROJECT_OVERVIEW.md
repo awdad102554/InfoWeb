@@ -492,6 +492,8 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-13**: 添加裁决书制作功能，包括新增页面 `/award/make`、API 接口 `/api/award/elements/<case_id>`、数据库表 `裁决书要素保存`，支持裁决书要素的保存和查询（`app.py`, `templates/award_make.html`）
+- **2026-03-13**: 将 `DatabaseManager._get_connection()` 改为公共方法 `get_connection()`，供裁决书 API 使用（`modules/database.py`）
 - **2026-03-12**: 修复立案详情页状态显示问题，添加字符串类型状态映射（`templates/handle_detail.html`）
 - **2026-03-12**: 修复立案查询等接口登录失效问题，添加401自动重新登录重试机制（`app.py`）
 - **2026-03-12**: 调整立案查询界面表格列宽：序号40px、案件编号75px、被申请人80px、操作192px（`templates/handle_query.html`）
@@ -521,4 +523,4 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ---
 
-*文档更新时间: 2026-03-11 16:30*
+*文档更新时间: 2026-03-13 09:15*

@@ -99,6 +99,12 @@ def handle_detail_page():
     return render_template('handle_detail.html')
 
 
+@app.route('/award/make')
+def award_make_page():
+    """裁决书制作页面"""
+    return render_template('award_make.html')
+
+
 @app.route('/reserve_query')
 def reserve_query_page():
     """预约仲裁申请查询页面"""
@@ -2339,6 +2345,294 @@ def generate_document():
 
 
 # ============================================
+# 裁决书制作API
+# ============================================
+
+@app.route('/api/award/elements/<case_id>', methods=['GET', 'POST'])
+def award_elements(case_id):
+    """
+    获取或保存裁决书要素
+    GET: 获取指定案件的裁决书要素
+    POST: 保存裁决书要素
+    """
+    try:
+        if request.method == 'GET':
+            # 先获取案件详情，提取案号中的bianhao
+            import re
+            bianhao = case_id  # 默认使用case_id
+            case_no = ''
+            try:
+                if login_manager.check_and_renew_login():
+                    headers = login_manager.get_auth_headers()
+                    detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
+                    response = requests.post(
+                        detail_url,
+                        headers=headers,
+                        json={'id': case_id},
+                        timeout=30
+                    )
+                    logger.info(f"[GET award/elements] case_id={case_id}, status={response.status_code}")
+                    if response.status_code == 200:
+                        case_data = response.json()
+                        data_content = case_data.get('data')
+                        if isinstance(data_content, dict):
+                            case_no = data_content.get('case_no', '')
+                        elif isinstance(data_content, list) and len(data_content) > 0:
+                            first_item = data_content[0]
+                            case_no = first_item.get('case_no', '') if isinstance(first_item, dict) else ''
+                        
+                        logger.info(f"[GET award/elements] case_no={case_no}")
+                        
+                        # 从案号提取bianhao
+                        if case_no:
+                            match = re.search(r'\[(\d{4})\](\d+)', case_no)
+                            if match:
+                                year, num = match.groups()
+                                bianhao = f"{year}{num}"
+                                logger.info(f"[GET award/elements] extracted bianhao={bianhao}")
+                            else:
+                                logger.warning(f"[GET award/elements] 无法从case_no提取bianhao: {case_no}")
+            except Exception as e:
+                logger.warning(f"[GET award/elements] 获取案件详情提取bianhao失败: {e}")
+            
+            logger.info(f"[GET award/elements] final bianhao={bianhao}, querying database...")
+            
+            # 查询数据库
+            conn = db_manager.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            try:
+                cursor.execute(
+                    "SELECT * FROM `裁决书要素保存` WHERE `案号` = %s",
+                    (bianhao,)
+                )
+                result = cursor.fetchone()
+                
+                if result:
+                    logger.info(f"[GET award/elements] 找到数据: 案号={bianhao}")
+                    return jsonify({
+                        'code': 200,
+                        'message': 'success',
+                        'data': result,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                else:
+                    logger.info(f"[GET award/elements] 未找到数据: 案号={bianhao}")
+                    return jsonify({
+                        'code': 404,
+                        'message': '未找到该案件的裁决书要素',
+                        'data': None,
+                        'timestamp': datetime.now().isoformat()
+                    })
+            finally:
+                cursor.close()
+                conn.close()
+        
+        else:  # POST
+            data = request.get_json() or {}
+            
+            # 获取字段值
+            case_no = data.get('case_no', case_id)
+            arbitration_request = data.get('仲裁请求', '')
+            applicant_claim = data.get('申请人称', '')
+            respondent_claim = data.get('被申请人称', '')
+            facts_found = data.get('经审理查明', '')
+            committee_opinion = data.get('本委认为', '')
+            final_decision = data.get('终局裁决', '')
+            non_final_decision = data.get('非终局裁决', '')
+            accept_time = data.get('受理时间', '')
+            
+            # 转换受理时间：从中文格式(2025年3月2日)转换为紧凑格式(20250302)
+            if accept_time:
+                import re
+                # 匹配 "2025年3月2日" 或 "2025年03月02日" 格式
+                match = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日', accept_time.strip())
+                if match:
+                    year, month, day = match.groups()
+                    accept_time = f"{year}{int(month):02d}{int(day):02d}"
+            
+            # 从案号提取编号：明永劳人仲案字[2026]98号 -> 202698
+            # 先尝试从case_no提取，如果没有则从case_id提取
+            bianhao = case_id  # 默认使用case_id
+            if case_no:
+                match = re.search(r'\[(\d{4})\](\d+)', case_no)
+                if match:
+                    year, num = match.groups()
+                    bianhao = f"{year}{num}"
+                else:
+                    # 尝试匹配 "明永劳人仲案字202698号" 这种格式
+                    match = re.search(r'(\d{4})(\d+)', case_no)
+                    if match:
+                        year, num = match.groups()
+                        bianhao = f"{year}{num}"
+            
+            # 连接数据库
+            conn = db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            try:
+                # 检查是否已存在（使用案号查询）
+                cursor.execute(
+                    "SELECT id FROM `裁决书要素保存` WHERE `案号` = %s",
+                    (bianhao,)
+                )
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # 更新
+                    cursor.execute("""
+                        UPDATE `裁决书要素保存` SET
+                            `仲裁请求` = %s,
+                            `申请人称` = %s,
+                            `被申请人称` = %s,
+                            `经审理查明` = %s,
+                            `本委认为` = %s,
+                            `终局裁决` = %s,
+                            `非终局裁决` = %s,
+                            `受理时间` = %s
+                        WHERE `案号` = %s
+                    """, (
+                        arbitration_request, applicant_claim, respondent_claim,
+                        facts_found, committee_opinion, final_decision,
+                        non_final_decision, accept_time, bianhao
+                    ))
+                else:
+                    # 插入
+                    cursor.execute("""
+                        INSERT INTO `裁决书要素保存`
+                        (`案号`, `仲裁请求`, `申请人称`, `被申请人称`, `经审理查明`,
+                         `本委认为`, `终局裁决`, `非终局裁决`, `受理时间`)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        bianhao, arbitration_request, applicant_claim, respondent_claim,
+                        facts_found, committee_opinion, final_decision,
+                        non_final_decision, accept_time
+                    ))
+                
+                conn.commit()
+                
+                return jsonify({
+                    'code': 200,
+                    'message': '保存成功',
+                    'data': {'case_id': case_id},
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+            finally:
+                cursor.close()
+                conn.close()
+                
+    except Exception as e:
+        logger.error(f"裁决书要素操作失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'code': 500,
+            'message': f'操作失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/award/generate', methods=['POST'])
+def generate_award():
+    """
+    生成裁决书Word文档
+    调用Dify Workflow生成Word文档（预留接口）
+    """
+    try:
+        data = request.get_json() or {}
+        
+        # TODO: 调用Dify Workflow生成Word文档
+        # 目前返回前端导出的HTML格式Word文档作为临时方案
+        
+        case_id = data.get('case_id', '')
+        case_no = data.get('case_no', '')
+        
+        # 收集所有字段内容
+        content_parts = []
+        
+        if data.get('受理时间'):
+            content_parts.append(f"<p>受理时间：{data.get('受理时间')}</p>")
+        
+        fields_mapping = [
+            ('仲裁请求', '一、仲裁请求'),
+            ('申请人称', '二、申请人称'),
+            ('被申请人称', '三、被申请人称'),
+            ('经审理查明', '四、经审理查明'),
+            ('本委认为', '五、本委认为'),
+            ('终局裁决', '六、终局裁决'),
+            ('非终局裁决', '七、非终局裁决'),
+        ]
+        
+        for field, title in fields_mapping:
+            value = data.get(field, '')
+            if value and value.strip():
+                # 将换行符转换为<br>和<p>标签
+                paragraphs = value.split('\n')
+                paragraphs_html = ''.join([f'<p class="indent-8">{p}</p>' for p in paragraphs if p.strip()])
+                content_parts.append(f'<h4>{title}</h4>{paragraphs_html}')
+        
+        content = '\n'.join(content_parts)
+        
+        # 生成HTML格式的Word文档
+        html_content = f"""
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+              xmlns:w='urn:schemas-microsoft-com:office:word' 
+              xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+            <meta charset="utf-8">
+            <title>仲裁裁决书</title>
+            <style>
+                body {{ font-family: 'SimSun', '宋体', serif; line-height: 1.8; font-size: 16pt; padding: 40px; }}
+                .indent-8 {{ text-indent: 2em; margin: 10pt 0; }}
+                h2 {{ font-size: 22pt; font-weight: bold; text-align: center; margin-bottom: 20pt; }}
+                h4 {{ font-size: 16pt; font-weight: bold; margin-top: 20pt; margin-bottom: 10pt; }}
+                p {{ margin: 10pt 0; }}
+            </style>
+        </head>
+        <body>
+            <h2>仲裁裁决书</h2>
+            <p style="text-align: center; margin-bottom: 30pt;">{case_no or ''}</p>
+            {content}
+            <div style="margin-top: 60pt;">
+                <div style="display: flex; justify-content: space-between;">
+                    <div>仲裁员：_______________</div>
+                    <div>日期：_______年____月____日</div>
+                </div>
+                <div style="text-align: center; margin-top: 30pt; font-size: 12pt;">
+                    本裁决为终局裁决
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # 生成响应
+        from flask import Response
+        response = Response(
+            html_content,
+            mimetype='application/msword',
+            headers={
+                'Content-Disposition': f'attachment; filename="仲裁裁决书_{case_no or case_id}.doc"'
+            }
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"生成裁决书失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'code': 500,
+            'message': f'生成失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+# ============================================
 # 启动服务器
 # ============================================
 
@@ -2380,6 +2674,11 @@ def start_server():
     logger.info("  GET  /api/doc_templates/tree     - 文档模板目录树")
     logger.info("  GET  /api/doc_templates/download - 下载文档模板")
     logger.info("  POST /api/doc_templates/generate - 生成文档")
+    logger.info("  [裁决书制作API]")
+    logger.info("  GET  /award/make                 - 裁决书制作页面")
+    logger.info("  GET  /api/award/elements/<id>    - 获取裁决书要素")
+    logger.info("  POST /api/award/elements/<id>    - 保存裁决书要素")
+    logger.info("  POST /api/award/generate         - 生成裁决书Word")
     logger.info("=" * 60)
     
     app.run(
