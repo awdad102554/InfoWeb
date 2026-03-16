@@ -1381,12 +1381,22 @@ class DocumentGenerator:
                 result['年月日_end_at'] = f"{dt.year}年{dt.month}月{dt.day}日"
                 # 中文格式 (二〇二六年一月二十一日)
                 result['中文_end_at'] = self._get_chinese_date(dt)
+                # 结案日期年月日单独字段
+                result['end_at_y'] = str(dt.year)  # 年，如 2026
+                result['end_at_m'] = str(dt.month)  # 月 1-12，无前导0
+                result['end_at_d'] = str(dt.day)    # 日 1-31，无前导0
             except:
                 result['年月日_end_at'] = end_at
                 result['中文_end_at'] = end_at
+                result['end_at_y'] = ''
+                result['end_at_m'] = ''
+                result['end_at_d'] = ''
         else:
             result['年月日_end_at'] = ''
             result['中文_end_at'] = ''
+            result['end_at_y'] = ''
+            result['end_at_m'] = ''
+            result['end_at_d'] = ''
         
         # 9. 开庭信息（从 tribunal_plan 最后一个元素提取）
         result['open'] = self._get_open_date_time(case_data)

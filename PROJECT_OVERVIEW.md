@@ -180,6 +180,11 @@ InfoWeb/
 - {handle_at_y}                       # 立案日期年份，如 2026
 - {handle_at_m}                       # 立案日期月份 1-12（无前导0）
 - {handle_at_d}                       # 立案日期日 1-31（无前导0）
+- {年月日_end_at}                     # 结案日期年月日 (2026年2月13日)
+- {中文_end_at}                       # 结案日期中文 (二〇二六年二月十三日)
+- {end_at_y}                          # 结案日期年份，如 2026
+- {end_at_m}                          # 结案日期月份 1-12（无前导0）
+- {end_at_d}                          # 结案日期日 1-31（无前导0）
 
 案号信息:
 - {case_no} / {case_no_raw}           # 案号（如：永劳人仲案字[2026]123号）
@@ -492,6 +497,7 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-16**: 添加结案日期变量 `{end_at_y}`, `{end_at_m}`, `{end_at_d}`，分别表示结案日期的年、月、日（`document_generator.py`）
 - **2026-03-16**: 修复多进程 Token 缓存不一致问题，修改 `get_auth_headers()` 和 `check_and_renew_login()` 每次都从数据库读取最新 Token；修复数据库状态检测，将 `db_manager.connection` 改为 `db_manager.pool`（`modules/login_manager.py`, `app.py`）
 - **2026-03-13**: 裁决书制作页面添加 Dify AI 助手 iframe 嵌入，根据客户端 IP 自动切换 Dify 地址（192.168.123.16 或 10.99.144.29），删除 Flask 代理代码，改为客户端直接访问（`app.py`, `templates/award_make.html`）
 - **2026-03-13**: 添加裁决书制作功能，包括新增页面 `/award/make`、API 接口 `/api/award/elements/<case_id>`、数据库表 `裁决书要素保存`，支持裁决书要素的保存和查询（`app.py`, `templates/award_make.html`）
