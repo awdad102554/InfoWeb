@@ -145,18 +145,51 @@ class LoginManager:
         Returns:
             dict: 包含认证信息的请求头，或None如果登录失败
         """
-        # 如果强制登录或者当前没有有效的登录信息，执行登录
-        if force_login or not self.current_auth_key or not self.current_session_id:
-            login_result = self.login(force=force_login)
+        username = self.config.LOGIN_USERNAME
+        
+        # 如果强制登录，直接重新登录
+        if force_login:
+            login_result = self.login(force=True)
             if login_result['code'] != 200:
                 return None
+            # 构建带有认证信息的请求头
+            headers = self.config.DEFAULT_HEADERS.copy()
+            headers['authKey'] = self.current_auth_key
+            headers['sessionId'] = self.current_session_id
+            return headers
         
-        # 构建带有认证信息的请求头
-        headers = self.config.DEFAULT_HEADERS.copy()
-        headers['authKey'] = self.current_auth_key
-        headers['sessionId'] = self.current_session_id
+        # 多进程环境下，优先从数据库读取最新Token，避免各进程缓存不一致
+        try:
+            valid_login = self.db_manager.get_valid_login_info(username)
+            if valid_login:
+                # 更新内存缓存（可选，用于减少数据库读取）
+                self.current_auth_key = valid_login['authKey']
+                self.current_session_id = valid_login['sessionId']
+                
+                # 构建带有认证信息的请求头
+                headers = self.config.DEFAULT_HEADERS.copy()
+                headers['authKey'] = valid_login['authKey']
+                headers['sessionId'] = valid_login['sessionId']
+                return headers
+        except Exception as e:
+            logger.warning(f"从数据库获取登录信息失败: {e}")
         
-        return headers
+        # 数据库没有有效Token，尝试使用内存缓存或重新登录
+        if self.current_auth_key and self.current_session_id:
+            headers = self.config.DEFAULT_HEADERS.copy()
+            headers['authKey'] = self.current_auth_key
+            headers['sessionId'] = self.current_session_id
+            return headers
+        
+        # 尝试登录
+        login_result = self.login()
+        if login_result['code'] == 200:
+            headers = self.config.DEFAULT_HEADERS.copy()
+            headers['authKey'] = self.current_auth_key
+            headers['sessionId'] = self.current_session_id
+            return headers
+        
+        return None
     
     def check_and_renew_login(self):
         """
@@ -168,25 +201,25 @@ class LoginManager:
         username = self.config.LOGIN_USERNAME
         
         try:
-            # 检查登录是否过期
+            # 检查登录是否过期（以数据库为准）
             if self.db_manager.is_login_expired(username):
                 logger.info("登录已过期，重新登录...")
                 login_result = self.login(force=True)
                 return login_result['code'] == 200
             else:
-                # 确保当前有有效的登录信息
-                if not self.current_auth_key or not self.current_session_id:
-                    valid_login = self.db_manager.get_valid_login_info(username)
-                    if valid_login:
-                        self.current_auth_key = valid_login['authKey']
-                        self.current_session_id = valid_login['sessionId']
-                        logger.info("已加载有效的登录信息")
-                        return True
-                    else:
-                        logger.warning("数据库中有记录但加载失败，尝试重新登录")
-                        login_result = self.login(force=True)
-                        return login_result['code'] == 200
-                return True
+                # 从数据库读取最新Token（多进程环境下确保一致性）
+                valid_login = self.db_manager.get_valid_login_info(username)
+                if valid_login:
+                    # 更新内存缓存
+                    self.current_auth_key = valid_login['authKey']
+                    self.current_session_id = valid_login['sessionId']
+                    logger.info("已从数据库加载有效的登录信息")
+                    return True
+                else:
+                    # 数据库中没有有效Token，尝试重新登录
+                    logger.warning("数据库中没有有效登录记录，尝试重新登录")
+                    login_result = self.login(force=True)
+                    return login_result['code'] == 200
         except Exception as e:
             logger.warning(f"检查登录状态时出错: {e}，尝试重新登录")
             login_result = self.login(force=True)

@@ -144,7 +144,7 @@ def api_status():
             'flask': 'running',
             'login_service': 'connected' if login_manager else 'disconnected',
             'query_service': 'connected' if company_query else 'disconnected',
-            'database': 'connected' if db_manager.connection else 'disconnected'
+            'database': 'connected' if db_manager.pool else 'disconnected'
         }
     })
 
@@ -294,7 +294,7 @@ def query_id_card():
 def db_status():
     """获取数据库状态"""
     try:
-        db_connected = db_manager.connection is not None
+        db_connected = db_manager.pool is not None
         login_records = db_manager.get_all_logins()
         expired_deleted = db_manager.delete_expired_logins()
         
