@@ -23,6 +23,8 @@ import pymysql
 import json
 import requests
 import re
+from docx.shared import Pt
+from docx.oxml.ns import qn
 
 # 导入原有模块
 from config import Config
@@ -2350,6 +2352,191 @@ def generate_document():
         return jsonify({
             'code': 500,
             'message': f'生成文档失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+# ============================================
+# 仲裁申请书生成API
+# ============================================
+
+@app.route('/api/application/generate', methods=['POST'])
+def generate_application_document():
+    """
+    生成仲裁申请书Word文档
+    前端传入拼接好的文本内容，后端替换模板占位符
+    
+    请求参数:
+    {
+        "applicant_info": "申请人：XXX，男...",  // 申请人信息段落
+        "respondent_info": "被申请人：XXX...",   // 被申请人信息段落
+        "requests": "1.裁决被申请人...\n2.裁决被申请人...",  // 仲裁请求
+        "total_amount": "以上共计XXX元。",      // 总金额（可选）
+        "facts_reasons": "申请人于...",         // 事实与理由
+        "filename": "仲裁申请书-XXX.docx"       // 输出文件名（可选）
+    }
+    """
+    try:
+        # 获取请求参数
+        params = request.get_json() or {}
+        
+        applicant_info = params.get('applicant_info', '')
+        respondent_info = params.get('respondent_info', '')
+        requests_text = params.get('requests', '')
+        total_amount = params.get('total_amount', '')
+        facts_reasons = params.get('facts_reasons', '')
+        filename = params.get('filename', '仲裁申请书.docx')
+        
+        if not filename.endswith('.docx'):
+            filename += '.docx'
+        
+        # 模板路径
+        template_path = os.path.join('templates', '仲裁申请书模板.docx')
+        if not os.path.exists(template_path):
+            return jsonify({
+                'code': 404,
+                'message': '申请书模板文件不存在',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 404
+        
+        # 输出目录和路径
+        output_dir = os.path.join('文件生成', 'output')
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, filename)
+        
+        # 加载模板并替换占位符
+        from docx import Document
+        doc = Document(template_path)
+        
+        # 准备替换数据
+        data = {
+            'applicant_info': applicant_info,
+            'respondent_info': respondent_info,
+            'requests': requests_text,
+            'total_amount': total_amount,
+            'facts_reasons': facts_reasons
+        }
+        
+        # 替换段落中的占位符
+        for para in doc.paragraphs:
+            for key, value in data.items():
+                placeholder = '{' + key + '}'
+                if placeholder in para.text:
+                    # 清除原有内容
+                    para.clear()
+                    
+                    # 处理申请人和被申请人信息（需要加粗前缀）
+                    if key in ['applicant_info', 'respondent_info']:
+                        # 按行分割处理
+                        lines = str(value).split('\n')
+                        for i, line in enumerate(lines):
+                            # 第一行已经有Word模板的首行缩进
+                            # 从第二行开始需要手动添加缩进（两个全角空格）
+                            if i > 0:
+                                indent_run = para.add_run('　　')  # 两个全角空格
+                                indent_run.font.name = '仿宋'
+                                indent_run.font.size = Pt(15)
+                                indent_run.font.bold = False
+                                indent_run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                            
+                            # 找到第一个冒号的位置
+                            colon_idx = line.find('：')
+                            if colon_idx == -1:
+                                colon_idx = line.find(':')
+                            
+                            if colon_idx > 0:
+                                # 分割前缀和内容
+                                prefix = line[:colon_idx + 1]  # 包含冒号
+                                content = line[colon_idx + 1:]  # 冒号后的内容
+                                
+                                # 判断是否是需要加粗的前缀
+                                # 申请人X： 和 被申请人X： 需要加粗
+                                # 法定代表人： 不需要加粗
+                                is_bold_prefix = False
+                                if '申请人' in prefix and '法定代表人' not in prefix:
+                                    is_bold_prefix = True
+                                
+                                # 前缀（根据条件决定是否加粗）
+                                run = para.add_run(prefix)
+                                run.font.name = '仿宋'
+                                run.font.size = Pt(15)
+                                run.font.bold = is_bold_prefix  # 根据条件加粗
+                                run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                                
+                                # 内容不加粗
+                                if content:
+                                    run = para.add_run(content)
+                                    run.font.name = '仿宋'
+                                    run.font.size = Pt(15)
+                                    run.font.bold = False
+                                    run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                            else:
+                                # 没有找到冒号，整行不加粗
+                                run = para.add_run(line)
+                                run.font.name = '仿宋'
+                                run.font.size = Pt(15)
+                                run.font.bold = False
+                                run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                            
+                            # 添加换行（除了最后一行）
+                            if i < len(lines) - 1:
+                                para.add_run('\n')
+                    else:
+                        # 其他内容正常处理（不加粗）
+                        lines = str(value).split('\n')
+                        for i, line in enumerate(lines):
+                            run = para.add_run(line)
+                            run.font.name = '仿宋'
+                            run.font.size = Pt(15)
+                            run.font.bold = False
+                            run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                            if i < len(lines) - 1:
+                                para.add_run('\n')
+        
+        # 替换表格中的占位符（表格中不需要特殊加粗处理）
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        for key, value in data.items():
+                            placeholder = '{' + key + '}'
+                            if placeholder in para.text:
+                                para.text = para.text.replace(placeholder, str(value))
+                                for run in para.runs:
+                                    run.font.name = '仿宋'
+                                    run.font.size = Pt(15)
+                                    run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+        
+        # 保存文档
+        doc.save(output_path)
+        logger.info(f"仲裁申请书生成成功: {output_path}")
+        
+        # 返回文件
+        from flask import send_file
+        from urllib.parse import quote
+        
+        response = send_file(
+            output_path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        
+        # 设置文件名编码
+        encoded_filename = quote(filename, safe='')
+        response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded_filename}"
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"生成仲裁申请书失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'code': 500,
+            'message': f'生成仲裁申请书失败: {str(e)}',
             'data': None,
             'timestamp': datetime.now().isoformat()
         }), 500

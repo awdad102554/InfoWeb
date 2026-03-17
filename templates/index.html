@@ -23,10 +23,7 @@
                     <i class="fas fa-shield-alt mr-2"></i>
                     <span>数据本地保存，安全可靠</span>
                 </div>
-                <div class="flex items-center">
-                    <i class="fas fa-print mr-2"></i>
-                    <span>支持一键打印</span>
-                </div>
+
             </div>
         </header>
 
@@ -57,8 +54,8 @@
                 </button>
             </div>
             <div>
-                <button id="printBtn" class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg mr-3 transition duration-300">
-                    <i class="fas fa-print mr-2"></i>打印申请书
+                <button id="generateWordBtn" class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg mr-3 transition duration-300">
+                    <i class="fas fa-file-word mr-2"></i>生成仲裁申请书
                 </button>
                 <button id="previewBtn" class="bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded-lg transition duration-300">
                     <i class="fas fa-eye mr-2"></i>预览完整版
@@ -189,9 +186,6 @@
                     </div>
                 </div>
                 <div class="sticky bottom-0 bg-white p-6 border-t border-gray-300 flex justify-end">
-                    <button id="printPreviewBtn" class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-6 rounded-lg mr-4">
-                        <i class="fas fa-print mr-2"></i>打印预览版
-                    </button>
                     <button id="closePreviewBtn2" class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-6 rounded-lg">
                         关闭预览
                     </button>
@@ -200,36 +194,8 @@
         </div>
     </div>
 
-    <!-- 打印版（仅在打印时显示） -->
-    <div class="print-only">
-        <div class="p-8">
-            <h1 class="text-3xl font-bold text-center mb-10">劳动仲裁申请书</h1>
 
-            <div id="print-applicants">
-                <!-- 打印版申请人信息将通过JavaScript动态生成 -->
-            </div>
 
-            <div id="print-respondents" class="mb-8">
-                <!-- 打印版被申请人信息将通过JavaScript动态生成 -->
-            </div>
-
-            <div id="print-evidence" class="mb-8">
-                <!-- 打印版证据清单将通过JavaScript动态生成 -->
-            </div>
-
-            <div class="mt-16">
-                <div class="text-right mb-10">
-                    <p>申请人（签名或盖章）：</p>
-                    <p class="mt-12">年&emsp;月&emsp;日</p>
-                </div>
-                <div class="mt-20">
-                    <h3 class="text-xl font-bold text-center">此致</h3>
-                    <h3 class="text-xl font-bold text-center mt-8">永安市劳动人事争议仲裁委员会</h3>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="/static/js/scripts.js?v=7"></script>
+    <script src="/static/js/scripts.js?v=8"></script>
 </body>
 </html>

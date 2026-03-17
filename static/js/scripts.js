@@ -63,14 +63,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // 重置表单
     document.getElementById('resetBtn').addEventListener('click', resetForm);
 
-    // 打印功能
-    document.getElementById('printBtn').addEventListener('click', printForm);
-
     // 预览功能
     document.getElementById('previewBtn').addEventListener('click', showPreview);
     document.getElementById('closePreviewBtn').addEventListener('click', closePreview);
     document.getElementById('closePreviewBtn2').addEventListener('click', closePreview);
-    document.getElementById('printPreviewBtn').addEventListener('click', printPreview);
+
+    // 生成仲裁申请书Word
+    document.getElementById('generateWordBtn').addEventListener('click', generateApplicationWord);
 
     // 委托事件处理
     document.addEventListener('click', function(e) {
@@ -881,6 +880,11 @@ function loadSavedData() {
     try {
         formData = JSON.parse(savedData);
 
+        // 数据验证：确保数组类型正确
+        if (!Array.isArray(formData.applicants)) formData.applicants = [];
+        if (!Array.isArray(formData.respondents)) formData.respondents = [];
+        if (!Array.isArray(formData.evidence)) formData.evidence = [];
+
         // 数据格式兼容性处理：将旧格式转换为新格式
         if (formData.applicants) {
             formData.applicants.forEach(applicant => {
@@ -922,6 +926,11 @@ function loadSavedData() {
             });
         }
 
+        // 清空所有容器，防止重复渲染
+        document.getElementById('applicantsList').innerHTML = '';
+        document.getElementById('respondentsList').innerHTML = '';
+        document.getElementById('evidenceList').innerHTML = '';
+
         // 渲染申请人
         if (formData.applicants && formData.applicants.length > 0) {
             formData.applicants.forEach((applicant, index) => {
@@ -936,11 +945,9 @@ function loadSavedData() {
             });
         }
 
-        // 渲染证据
+        // 渲染证据（使用 refreshEvidenceList 确保申请人下拉选项正确）
         if (formData.evidence && formData.evidence.length > 0) {
-            formData.evidence.forEach((evidence, index) => {
-                renderEvidence(index);
-            });
+            refreshEvidenceList();
         }
         
         // 加载收件编号
@@ -997,130 +1004,6 @@ function resetForm() {
 
             alert('表单已重置！');
         }
-    }
-}
-
-// 打印表单
-function printForm() {
-    collectDataFromDOM();
-    populatePrintContent();
-    window.print();
-}
-
-// 填充打印版内容
-function populatePrintContent() {
-    // 申请人信息
-    const printApplicants = document.getElementById('print-applicants');
-    printApplicants.innerHTML = '';
-
-    formData.applicants.forEach((applicant, index) => {
-        const applicantDiv = document.createElement('div');
-        applicantDiv.className = 'mb-8';
-
-        // 仲裁请求列表
-        let requestsHtml = '';
-        applicant.requests.forEach((req, reqIndex) => {
-            requestsHtml += `
-                <div class="mb-2">
-                    <p><strong>仲裁请求 ${reqIndex + 1}：</strong>${req || '未填写'}</p>
-                </div>
-            `;
-        });
-
-        applicantDiv.innerHTML = `
-            <h2 class="text-xl font-bold border-b border-black pb-2 mb-4">申请人 ${index + 1} 信息</h2>
-            <div class="grid grid-cols-2 gap-4 mb-2">
-                <div><strong>姓名：</strong>${applicant.name || ''}</div>
-                <div><strong>性别：</strong>${applicant.gender || ''}</div>
-                <div><strong>民族：</strong>${applicant.nation || ''}</div>
-                <div><strong>出生年月：</strong>${applicant.birth || ''}</div>
-                <div class="col-span-2"><strong>住址：</strong>${applicant.address || ''}</div>
-                <div><strong>联系电话：</strong>${applicant.phone || ''}</div>
-                <div><strong>身份证号码：</strong>${applicant.idCard || ''}</div>
-            </div>
-            <div class="mt-4 mb-4 p-3 bg-gray-50">
-                <h3 class="font-bold mb-2">入职信息</h3>
-                <div class="grid grid-cols-3 gap-4">
-                    <div><strong>入职时间：</strong>${applicant.employmentDate || ''}</div>
-                    <div><strong>工作地点：</strong>${applicant.workLocation || ''}</div>
-                    <div><strong>月工资：</strong>${applicant.monthlySalary || ''}</div>
-                </div>
-            </div>
-            <div class="mb-4">
-                <h3 class="font-bold mb-2">仲裁请求</h3>
-                ${requestsHtml}
-            </div>
-            <div class="mb-4">
-                <h3 class="font-bold mb-2">事实与理由</h3>
-                <p style="text-indent: 2em;">${applicant.factsReasons || '未填写'}</p>
-            </div>
-        `;
-        printApplicants.appendChild(applicantDiv);
-    });
-
-    // 被申请人信息
-    const printRespondents = document.getElementById('print-respondents');
-    printRespondents.innerHTML = '';
-
-    if (formData.respondents.length > 0) {
-        const respondentsTitle = document.createElement('h2');
-        respondentsTitle.className = 'text-xl font-bold border-b border-black pb-2 mb-4';
-        respondentsTitle.textContent = '被申请人信息';
-        printRespondents.appendChild(respondentsTitle);
-
-        formData.respondents.forEach((respondent, index) => {
-            const respondentDiv = document.createElement('div');
-            respondentDiv.className = 'mb-4';
-            respondentDiv.innerHTML = `
-                <h3 class="font-bold mb-2">被申请人 ${index + 1}</h3>
-                <div class="grid grid-cols-2 gap-4 mb-2">
-                    <div class="col-span-2"><strong>单位名称：</strong>${respondent.name || ''}</div>
-                    <div><strong>法定代表人：</strong>${respondent.legalPerson || ''}</div>
-                    <div><strong>职务：</strong>${respondent.position || ''}</div>
-                    <div class="col-span-2"><strong>住所：</strong>${respondent.address || ''}</div>
-                    <div><strong>联系电话：</strong>${respondent.phone || ''}</div>
-                    <div><strong>统一社会信用代码：</strong>${respondent.code || ''}</div>
-                </div>
-            `;
-            printRespondents.appendChild(respondentDiv);
-        });
-    }
-
-    // 证据清单
-    const printEvidence = document.getElementById('print-evidence');
-    printEvidence.innerHTML = '';
-
-    if (formData.evidence.length > 0) {
-        const evidenceTitle = document.createElement('h2');
-        evidenceTitle.className = 'text-xl font-bold border-b border-black pb-2 mb-4';
-        evidenceTitle.textContent = '证据清单';
-        printEvidence.appendChild(evidenceTitle);
-
-        const table = document.createElement('table');
-        table.className = 'w-full border border-black';
-        table.innerHTML = `
-            <thead>
-                <tr class="bg-gray-100">
-                    <th class="border border-black p-2">序号</th>
-                    <th class="border border-black p-2">证据名称</th>
-                    <th class="border border-black p-2">证据来源</th>
-                    <th class="border border-black p-2">证明内容</th>
-                    <th class="border border-black p-2">页码</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${formData.evidence.map((ev, idx) => `
-                    <tr>
-                        <td class="border border-black p-2 text-center">${toChineseNumber(idx + 1)}</td>
-                        <td class="border border-black p-2">${ev.name || ''}</td>
-                        <td class="border border-black p-2">${ev.source || ''}</td>
-                        <td class="border border-black p-2">${ev.purpose || ''}</td>
-                        <td class="border border-black p-2 text-center">${ev.pageRange || ''}</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        `;
-        printEvidence.appendChild(table);
     }
 }
 
@@ -1259,14 +1142,6 @@ function showPreview() {
 // 关闭预览
 function closePreview() {
     document.getElementById('previewModal').classList.add('hidden');
-}
-
-// 打印预览版
-function printPreview() {
-    closePreview();
-    setTimeout(() => {
-        printForm();
-    }, 300);
 }
 
 // 查询个人身份信息
@@ -1413,4 +1288,255 @@ function fillCompanyInfo(respondentItem, companyData) {
     if (companyData['统一社会信用代码']) {
         respondentItem.querySelector('.respondent-code').value = companyData['统一社会信用代码'];
     }
+}
+// ============================================
+// 仲裁申请书Word生成功能
+// ============================================
+
+/**
+ * 生成仲裁申请书Word文档
+ */
+async function generateApplicationWord() {
+    // 先收集当前表单数据
+    collectDataFromDOM();
+    
+    // 验证必要数据
+    if (formData.applicants.length === 0 || !formData.applicants[0].name) {
+        alert('请至少填写一个申请人的信息');
+        return;
+    }
+    if (formData.respondents.length === 0 || !formData.respondents[0].name) {
+        alert('请至少填写一个被申请人的信息');
+        return;
+    }
+    if (!formData.applicants[0].requests[0]) {
+        alert('请填写仲裁请求');
+        return;
+    }
+    
+    try {
+        const btn = document.getElementById('generateWordBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>生成中...';
+        btn.disabled = true;
+        
+        // 拼接各部分内容
+        const applicantInfo = buildApplicantInfo();
+        const respondentInfo = buildRespondentInfo();
+        const requestsText = buildRequestsText();
+        const totalAmount = buildTotalAmount();
+        const factsReasons = buildFactsReasons();
+        
+        // 生成文件名
+        const firstApplicantName = formData.applicants[0].name || '未知';
+        const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const filename = `仲裁申请书-${firstApplicantName}-${timestamp}.docx`;
+        
+        // 调用API生成Word
+        const response = await fetch(`${API_BASE_URL}/application/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                applicant_info: applicantInfo,
+                respondent_info: respondentInfo,
+                requests: requestsText,
+                total_amount: totalAmount,
+                facts_reasons: factsReasons,
+                filename: filename
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || '生成文档失败');
+        }
+        
+        // 下载文件
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        alert('仲裁申请书生成成功！');
+        
+    } catch (error) {
+        console.error('生成仲裁申请书失败:', error);
+        alert('生成仲裁申请书失败: ' + error.message);
+    } finally {
+        // 恢复按钮状态
+        const btn = document.getElementById('generateWordBtn');
+        btn.innerHTML = '<i class="fas fa-file-word mr-2"></i>生成仲裁申请书';
+        btn.disabled = false;
+    }
+}
+
+/**
+ * 构建申请人信息文本
+ * 格式：申请人：姓名，性别，民族，XXXX年XX月XX日出生，身份证住址：XXX。公民身份号码：XXX，电话：XXX。
+ */
+function buildApplicantInfo() {
+    return formData.applicants.map((app, index) => {
+        const seq = formData.applicants.length > 1 ? `${index + 1}` : '';
+        const parts = [];
+        
+        // 基本信息（不添加手动缩进，由Word模板首行缩进控制）
+        if (app.name) parts.push(`申请人${seq}：${app.name}`);
+        if (app.gender) parts.push(`，${app.gender}`);
+        if (app.nation) parts.push(`，${app.nation}`);
+        if (app.birth) parts.push(`，${app.birth}出生`);
+        
+        // 住址
+        if (app.address) parts.push(`，身份证住址：${app.address}`);
+        
+        // 身份证号和电话
+        if (app.idCard) parts.push(`。公民身份号码：${app.idCard}`);
+        if (app.phone) parts.push(`，电话：${app.phone}`);
+        
+        parts.push('。');
+        return parts.join('');
+    }).join('\n');
+}
+
+/**
+ * 构建被申请人信息文本
+ * 格式：被申请人：XXX，住所：XXX，统一社会信用代码：XXX。
+ *       法定代表人：XXX；职务，电话：XXX。
+ */
+function buildRespondentInfo() {
+    return formData.respondents.map((resp, index) => {
+        const seq = formData.respondents.length > 1 ? `${index + 1}` : '';
+        let text = '';
+        
+        // 被申请人基本信息（不添加手动缩进，由后端处理）
+        text += `被申请人${seq}：${resp.name || '未知'}`;
+        if (resp.address) text += `，住所：${resp.address}`;
+        if (resp.code) text += `，统一社会信用代码：${resp.code}`;
+        text += '。';
+        
+        // 法定代表人信息（不添加手动缩进，由后端处理）
+        if (resp.legalPerson || resp.position || resp.phone) {
+            text += '\n';  // 只换行，缩进由后端统一处理
+            if (resp.legalPerson) text += `法定代表人：${resp.legalPerson}`;
+            if (resp.position) text += `；${resp.position}`;
+            if (resp.phone) text += `，电话：${resp.phone}`;
+            text += '。';
+        }
+        
+        return text;
+    }).join('\n');
+}
+
+/**
+ * 构建仲裁请求文本
+ * 格式：
+ * 1.裁决被申请人支付申请人工资XXX元。
+ * 2.裁决被申请人支付申请人经济补偿金XXX元。
+ */
+function buildRequestsText() {
+    // 收集所有申请人的请求
+    let allRequests = [];
+    let requestIndex = 1;
+    
+    formData.applicants.forEach((app, appIdx) => {
+        const applicantPrefix = formData.applicants.length > 1 ? `申请人${appIdx + 1}` : '申请人';
+        
+        app.requests.forEach(req => {
+            if (req && req.trim()) {
+                // 如果请求内容已经以数字开头，就不再加序号
+                if (/^\d+[\.、]/.test(req.trim())) {
+                    allRequests.push(req.trim());
+                } else {
+                    allRequests.push(`${requestIndex}.裁决被申请人支付${applicantPrefix}${req.trim()}`);
+                }
+                requestIndex++;
+            }
+        });
+    });
+    
+    return allRequests.join('\n');
+}
+
+/**
+ * 构建总金额文本
+ * 格式：以上共计XXX元。
+ */
+function buildTotalAmount() {
+    // 尝试从请求中提取金额并计算总和
+    let total = 0;
+    let hasAmount = false;
+    
+    formData.applicants.forEach(app => {
+        app.requests.forEach(req => {
+            if (req) {
+                // 匹配金额（支持 xxx元、xxx万元、xxx,xxx元 等格式）
+                const matches = req.match(/(\d+\.?\d*)\s*(万元?)/g);
+                if (matches) {
+                    matches.forEach(match => {
+                        const numMatch = match.match(/(\d+\.?\d*)/);
+                        if (numMatch) {
+                            let amount = parseFloat(numMatch[1]);
+                            if (match.includes('万元')) {
+                                amount *= 10000;
+                            }
+                            total += amount;
+                            hasAmount = true;
+                        }
+                    });
+                }
+            }
+        });
+    });
+    
+    if (hasAmount && total > 0) {
+        // 格式化金额
+        if (total >= 10000) {
+            const wan = (total / 10000).toFixed(2);
+            return `以上共计${total.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}元（计${wan}万元）。`;
+        }
+        return `以上共计${total.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}元。`;
+    }
+    
+    return '';
+}
+
+/**
+ * 构建事实与理由文本
+ */
+function buildFactsReasons() {
+    const parts = [];
+    
+    formData.applicants.forEach((app, index) => {
+        const seq = formData.applicants.length > 1 ? `${index + 1}` : '';
+        
+        // 入职信息段落
+        let entryText = '';
+        if (app.employmentDate || app.workLocation || app.monthlySalary) {
+            entryText = `申请人${seq}于${app.employmentDate || 'XXXX年XX月'}入职于被申请人处`;
+            if (app.workLocation) {
+                entryText += `从事${app.workLocation}`;
+            }
+            if (app.monthlySalary) {
+                entryText += `，双方约定月工资为${app.monthlySalary}元`;
+            }
+            entryText += '。';
+            parts.push(entryText);
+        }
+        
+        // 事实与理由内容
+        if (app.factsReasons && app.factsReasons.trim()) {
+            parts.push(app.factsReasons.trim());
+        }
+    });
+    
+    // 添加通用结尾
+    parts.push('申请人为被申请人提供劳动，被申请人依法应当按照劳动合同约定和国家规定，及时足额按月向申请人支付劳动报酬。现申请人为了维护自身的合法权益，特依法提起仲裁，望予以公正裁决。');
+    
+    return parts.join('\n\n');
 }
