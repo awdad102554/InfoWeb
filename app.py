@@ -432,14 +432,14 @@ def save_case():
             cursor.execute("""
                 INSERT INTO applicants (
                     case_id, seq_no, name, gender, nation, birth_date,
-                    address, phone, id_card, employment_date, work_location,
+                    address, phone, id_card, employment_date, position, work_location,
                     monthly_salary, facts_reasons
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 case_id, applicant.get('seq_no'), applicant.get('name'),
                 applicant.get('gender'), applicant.get('nation'), applicant.get('birth_date'),
                 applicant.get('address'), applicant.get('phone'), applicant.get('id_card'),
-                applicant.get('employment_date'), applicant.get('work_location'),
+                applicant.get('employment_date'), applicant.get('position'), applicant.get('work_location'),
                 applicant.get('monthly_salary'), applicant.get('facts_reasons')
             ))
             applicant_id = cursor.lastrowid
@@ -2481,6 +2481,44 @@ def generate_application_document():
                                 run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
                             
                             # 添加换行（除了最后一行）
+                            if i < len(lines) - 1:
+                                para.add_run('\n')
+                    elif key == 'requests':
+                        # 请求事项需要处理换行缩进
+                        lines = str(value).split('\n')
+                        for i, line in enumerate(lines):
+                            # 第一行已有Word模板首行缩进，从第二行开始手动添加缩进
+                            if i > 0:
+                                indent_run = para.add_run('　　')  # 两个全角空格
+                                indent_run.font.name = '仿宋'
+                                indent_run.font.size = Pt(15)
+                                indent_run.font.bold = False
+                                indent_run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                            
+                            run = para.add_run(line)
+                            run.font.name = '仿宋'
+                            run.font.size = Pt(15)
+                            run.font.bold = False
+                            run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                            if i < len(lines) - 1:
+                                para.add_run('\n')
+                    elif key == 'facts_reasons':
+                        # 事实与理由需要处理换行缩进
+                        lines = str(value).split('\n')
+                        for i, line in enumerate(lines):
+                            # 第一行已有Word模板首行缩进，从第二行开始手动添加缩进
+                            if i > 0:
+                                indent_run = para.add_run('　　')  # 两个全角空格
+                                indent_run.font.name = '仿宋'
+                                indent_run.font.size = Pt(15)
+                                indent_run.font.bold = False
+                                indent_run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+                            
+                            run = para.add_run(line)
+                            run.font.name = '仿宋'
+                            run.font.size = Pt(15)
+                            run.font.bold = False
+                            run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
                             if i < len(lines) - 1:
                                 para.add_run('\n')
                     else:

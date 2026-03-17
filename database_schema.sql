@@ -31,13 +31,14 @@ CREATE TABLE IF NOT EXISTS applicants (
     name VARCHAR(50) NOT NULL COMMENT '姓名',
     gender VARCHAR(10) COMMENT '性别',
     nation VARCHAR(20) COMMENT '民族',
-    birth_date VARCHAR(20) COMMENT '出生年月(格式: YYYY年MM月)',
+    birth_date VARCHAR(20) COMMENT '出生日期(格式: YYYY-MM-DD)',
     address TEXT COMMENT '住址',
     phone VARCHAR(20) COMMENT '联系电话',
     id_card VARCHAR(18) COMMENT '身份证号码',
     
     -- 入职信息
     employment_date VARCHAR(20) COMMENT '入职时间(格式: YYYY年MM月)',
+    position VARCHAR(100) COMMENT '岗位',
     work_location VARCHAR(200) COMMENT '工作地点(公司)',
     monthly_salary VARCHAR(50) COMMENT '月工资',
     

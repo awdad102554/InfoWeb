@@ -149,6 +149,7 @@ function addApplicant() {
         idCard: '',
         // 入职信息
         employmentDate: '',
+        position: '',        // 岗位
         workLocation: '',
         monthlySalary: '',
         // 仲裁请求列表（仅请求内容）
@@ -204,8 +205,8 @@ function renderApplicant(index) {
                     <input type="text" class="applicant-nation w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="请输入民族" value="${applicant.nation}">
                 </div>
                 <div>
-                    <label class="block text-gray-700 text-sm font-medium mb-1">出生年月</label>
-                    <input type="text" class="applicant-birth w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="格式：YYYY年MM月" value="${applicant.birth}">
+                    <label class="block text-gray-700 text-sm font-medium mb-1">出生日期</label>
+                    <input type="date" class="applicant-birth w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="${applicant.birth}">
                 </div>
                 <div class="md:col-span-2">
                     <label class="block text-gray-700 text-sm font-medium mb-1">住址</label>
@@ -230,18 +231,22 @@ function renderApplicant(index) {
         <!-- 入职信息 -->
         <div class="mb-4">
             <h4 class="text-sm font-bold text-gray-600 mb-2">入职信息</h4>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-gray-700 text-sm font-medium mb-1">入职时间</label>
-                    <input type="text" class="applicant-employment-date w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="格式：YYYY年MM月" value="${applicant.employmentDate}">
+                    <input type="date" class="applicant-employment-date w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="${applicant.employmentDate}">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-medium mb-1">岗位</label>
+                    <input type="text" class="applicant-position w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="如：电工、技术员等" value="${applicant.position}">
                 </div>
                 <div>
                     <label class="block text-gray-700 text-sm font-medium mb-1">工作地点（公司）</label>
                     <input type="text" class="applicant-work-location w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="请输入工作地点" value="${applicant.workLocation}">
                 </div>
                 <div>
-                    <label class="block text-gray-700 text-sm font-medium mb-1">月工资</label>
-                    <input type="text" class="applicant-salary w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="请输入月工资数额" value="${applicant.monthlySalary}">
+                    <label class="block text-gray-700 text-sm font-medium mb-1">月工资（元）</label>
+                    <input type="number" min="0" step="0.01" class="applicant-salary w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="请输入数额，如：5000" value="${applicant.monthlySalary}">
                 </div>
             </div>
         </div>
@@ -610,6 +615,7 @@ function collectDataFromDOM() {
             phone: item.querySelector('.applicant-phone').value,
             idCard: item.querySelector('.applicant-idcard').value,
             employmentDate: item.querySelector('.applicant-employment-date').value,
+            position: item.querySelector('.applicant-position').value,
             workLocation: item.querySelector('.applicant-work-location').value,
             monthlySalary: item.querySelector('.applicant-salary').value,
             requests: []
@@ -707,6 +713,7 @@ async function saveData() {
                 phone: app.phone,
                 id_card: app.idCard,
                 employment_date: app.employmentDate,
+                position: app.position,
                 work_location: app.workLocation,
                 monthly_salary: app.monthlySalary,
                 facts_reasons: app.factsReasons,
@@ -808,7 +815,9 @@ async function loadCaseForEdit(caseId) {
             address: app.address || '',
             phone: app.phone || '',
             idCard: app.id_card || '',
-            employmentDate: app.employment_date || '',
+            birth: convertDateToISO(app.birth_date) || '',
+            employmentDate: convertDateToISO(app.employment_date) || '',
+            position: app.position || '',
             workLocation: app.work_location || '',
             monthlySalary: app.monthly_salary || '',
             factsReasons: app.facts_reasons || '',
@@ -910,6 +919,16 @@ function loadSavedData() {
                 // 确保 requests 是数组
                 if (!applicant.requests || !Array.isArray(applicant.requests)) {
                     applicant.requests = [''];
+                }
+                
+                // 处理出生日期格式转换（兼容旧数据的YYYY年MM月格式）
+                if (applicant.birth && typeof applicant.birth === 'string') {
+                    applicant.birth = convertDateToISO(applicant.birth) || applicant.birth;
+                }
+                
+                // 处理入职日期格式转换（兼容旧数据的YYYY年MM月格式）
+                if (applicant.employmentDate && typeof applicant.employmentDate === 'string') {
+                    applicant.employmentDate = convertDateToISO(applicant.employmentDate) || applicant.employmentDate;
                 }
             });
         }
@@ -1034,8 +1053,9 @@ function showPreview() {
                 </div>
                 <div class="mt-4 mb-4 p-3 bg-gray-50 rounded">
                     <h4 class="font-bold mb-2">入职信息</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div><strong>入职时间：</strong>${applicant.employmentDate || '未填写'}</div>
+                        <div><strong>岗位：</strong>${applicant.position || '未填写'}</div>
                         <div><strong>工作地点：</strong>${applicant.workLocation || '未填写'}</div>
                         <div><strong>月工资：</strong>${applicant.monthlySalary || '未填写'}</div>
                     </div>
@@ -1210,12 +1230,13 @@ function fillPersonalInfo(applicantItem, personData) {
         applicantItem.querySelector('.applicant-nation').value = personData.AAC005;
     }
     if (personData.AAC006) {
-        // 转换日期格式：YYYY-MM-DD 转换为 YYYY年MM月
+        // 转换日期格式：YYYY-MM-DD 转换为 YYYY-MM-DD (用于 date 输入框)
         const birthDate = new Date(personData.AAC006);
         if (!isNaN(birthDate.getTime())) {
             const year = birthDate.getFullYear();
-            const month = birthDate.getMonth() + 1;
-            applicantItem.querySelector('.applicant-birth').value = `${year}年${month.toString().padStart(2, '0')}月`;
+            const month = String(birthDate.getMonth() + 1).padStart(2, '0');
+            const day = String(birthDate.getDate()).padStart(2, '0');
+            applicantItem.querySelector('.applicant-birth').value = `${year}-${month}-${day}`;
         }
     }
     if (personData.AAE006) {
@@ -1378,6 +1399,19 @@ async function generateApplicationWord() {
 }
 
 /**
+ * 将日期格式转换为中文格式 YYYY年MM月DD日
+ */
+function formatDateToChineseFull(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}年${month}月${day}日`;
+}
+
+/**
  * 构建申请人信息文本
  * 格式：申请人：姓名，性别，民族，XXXX年XX月XX日出生，身份证住址：XXX。公民身份号码：XXX，电话：XXX。
  */
@@ -1390,7 +1424,7 @@ function buildApplicantInfo() {
         if (app.name) parts.push(`申请人${seq}：${app.name}`);
         if (app.gender) parts.push(`，${app.gender}`);
         if (app.nation) parts.push(`，${app.nation}`);
-        if (app.birth) parts.push(`，${app.birth}出生`);
+        if (app.birth) parts.push(`，${formatDateToChineseFull(app.birth)}出生`);
         
         // 住址
         if (app.address) parts.push(`，身份证住址：${app.address}`);
@@ -1435,25 +1469,23 @@ function buildRespondentInfo() {
 
 /**
  * 构建仲裁请求文本
- * 格式：
- * 1.裁决被申请人支付申请人工资XXX元。
- * 2.裁决被申请人支付申请人经济补偿金XXX元。
+ * 格式：直接输出用户填写的内容，仅添加序号
+ * 1.请求裁决支付拖欠工资20000元。
+ * 2.请求裁决支付经济补偿金5000元。
  */
 function buildRequestsText() {
     // 收集所有申请人的请求
     let allRequests = [];
     let requestIndex = 1;
     
-    formData.applicants.forEach((app, appIdx) => {
-        const applicantPrefix = formData.applicants.length > 1 ? `申请人${appIdx + 1}` : '申请人';
-        
+    formData.applicants.forEach((app) => {
         app.requests.forEach(req => {
             if (req && req.trim()) {
                 // 如果请求内容已经以数字开头，就不再加序号
                 if (/^\d+[\.、]/.test(req.trim())) {
                     allRequests.push(req.trim());
                 } else {
-                    allRequests.push(`${requestIndex}.裁决被申请人支付${applicantPrefix}${req.trim()}`);
+                    allRequests.push(`${requestIndex}.${req.trim()}`);
                 }
                 requestIndex++;
             }
@@ -1520,7 +1552,56 @@ function buildTotalAmount() {
 }
 
 /**
+ * 将日期格式转换为 ISO格式 (YYYY-MM-DD)
+ * 支持输入：YYYY-MM-DD、YYYY年MM月DD日、YYYY年MM月
+ */
+function convertDateToISO(dateStr) {
+    if (!dateStr) return '';
+    
+    // 如果已经是 ISO 格式，直接返回
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+    }
+    
+    // 匹配 YYYY年MM月DD日 格式
+    const chineseMatch = dateStr.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+    if (chineseMatch) {
+        const year = chineseMatch[1];
+        const month = String(chineseMatch[2]).padStart(2, '0');
+        const day = String(chineseMatch[3]).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    
+    // 匹配 YYYY年MM月 格式（默认日期为01日）
+    const monthMatch = dateStr.match(/(\d{4})年(\d{1,2})月/);
+    if (monthMatch) {
+        const year = monthMatch[1];
+        const month = String(monthMatch[2]).padStart(2, '0');
+        return `${year}-${month}-01`;
+    }
+    
+    return '';
+}
+
+/**
+ * 格式化日期为中文格式 YYYY年MM月DD日
+ */
+function formatDateToChinese(dateStr) {
+    if (!dateStr) return 'XXXX年XX月XX日';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return 'XXXX年XX月XX日';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}年${month}月${day}日`;
+}
+
+/**
  * 构建事实与理由文本
+ * 格式：每行单独成段，用单个换行连接
+ * 入职信息
+ * 事实理由
+ * 后缀
  */
 function buildFactsReasons() {
     const parts = [];
@@ -1528,28 +1609,39 @@ function buildFactsReasons() {
     formData.applicants.forEach((app, index) => {
         const seq = formData.applicants.length > 1 ? `${index + 1}` : '';
         
-        // 入职信息段落
-        let entryText = '';
-        if (app.employmentDate || app.workLocation || app.monthlySalary) {
-            entryText = `申请人${seq}于${app.employmentDate || 'XXXX年XX月'}入职于被申请人处`;
+        // 入职信息和事实理由合并到同一段落
+        let paragraph = '';
+        
+        // 入职信息
+        if (app.employmentDate || app.position || app.workLocation || app.monthlySalary) {
+            const dateStr = formatDateToChinese(app.employmentDate);
+            paragraph += `申请人${seq}于${dateStr}入职于被申请人处`;
+            if (app.position) {
+                paragraph += `从事${app.position}工作`;
+            }
             if (app.workLocation) {
-                entryText += `从事${app.workLocation}`;
+                paragraph += `，工作地点为${app.workLocation}`;
             }
             if (app.monthlySalary) {
-                entryText += `，双方约定月工资为${app.monthlySalary}元`;
+                paragraph += `，双方约定月工资为${app.monthlySalary}元`;
             }
-            entryText += '。';
-            parts.push(entryText);
+            paragraph += '。';
         }
         
-        // 事实与理由内容
+        // 事实与理由内容（直接连接在入职信息后面，不分段）
         if (app.factsReasons && app.factsReasons.trim()) {
-            parts.push(app.factsReasons.trim());
+            paragraph += app.factsReasons.trim();
+        }
+        
+        // 如果该申请人有内容，添加到parts
+        if (paragraph) {
+            parts.push(paragraph);
         }
     });
     
-    // 添加通用结尾
+    // 添加通用结尾（单独一行）
     parts.push('申请人为被申请人提供劳动，被申请人依法应当按照劳动合同约定和国家规定，及时足额按月向申请人支付劳动报酬。现申请人为了维护自身的合法权益，特依法提起仲裁，望予以公正裁决。');
     
-    return parts.join('\n\n');
+    // 用单个换行连接各部分
+    return parts.join('\n');
 }
