@@ -1466,41 +1466,54 @@ function buildRequestsText() {
 /**
  * 构建总金额文本
  * 格式：以上共计XXX元。
+ * 规则：
+ *   1. 只有一个请求时，不显示总金额
+ *   2. 两个及以上请求时，显示以上共计xx元
+ *   3. 从每个请求截取括号之前的内容，提取第一次出现"元"之前的数值
  */
 function buildTotalAmount() {
-    // 尝试从请求中提取金额并计算总和
-    let total = 0;
-    let hasAmount = false;
-    
+    // 收集所有有效的请求
+    let allRequests = [];
     formData.applicants.forEach(app => {
         app.requests.forEach(req => {
-            if (req) {
-                // 匹配金额（支持 xxx元、xxx万元、xxx,xxx元 等格式）
-                const matches = req.match(/(\d+\.?\d*)\s*(万元?)/g);
-                if (matches) {
-                    matches.forEach(match => {
-                        const numMatch = match.match(/(\d+\.?\d*)/);
-                        if (numMatch) {
-                            let amount = parseFloat(numMatch[1]);
-                            if (match.includes('万元')) {
-                                amount *= 10000;
-                            }
-                            total += amount;
-                            hasAmount = true;
-                        }
-                    });
-                }
+            if (req && req.trim()) {
+                allRequests.push(req.trim());
             }
         });
     });
     
-    if (hasAmount && total > 0) {
-        // 格式化金额
-        if (total >= 10000) {
-            const wan = (total / 10000).toFixed(2);
-            return `以上共计${total.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}元（计${wan}万元）。`;
+    // 只有一个请求时，不显示总金额
+    if (allRequests.length <= 1) {
+        return '';
+    }
+    
+    // 尝试从每个请求中提取金额并计算总和
+    let total = 0;
+    let hasAmount = false;
+    
+    allRequests.forEach(req => {
+        // 截取括号之前的内容
+        let content = req;
+        const bracketIdx = req.indexOf('（');
+        if (bracketIdx > 0) {
+            content = req.substring(0, bracketIdx);
         }
-        return `以上共计${total.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}元。`;
+        
+        // 提取第一次出现"元"之前的数值
+        // 匹配模式：数字（可包含小数点）+ 可选的空白 + "元"
+        const match = content.match(/(\d+\.?\d*)\s*元/);
+        if (match) {
+            const amount = parseFloat(match[1]);
+            if (!isNaN(amount)) {
+                total += amount;
+                hasAmount = true;
+            }
+        }
+    });
+    
+    if (hasAmount && total > 0) {
+        // 格式化金额（不带千分位逗号，保留两位小数）
+        return `以上共计${total.toFixed(2)}元。`;
     }
     
     return '';
