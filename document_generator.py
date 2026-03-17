@@ -928,6 +928,74 @@ class DocumentGenerator:
         
         return default
     
+    def _process_new_reason(self, case_arb_request):
+        """
+        处理 {new_reason} 赋值逻辑
+        根据 case_arb_request 中每个请求的 type 数组生成案由字符串
+        
+        Args:
+            case_arb_request: 仲裁请求列表，每个请求包含 type 数组
+            
+        Returns:
+            str: 用 "、" 连接的去重后案由字符串
+        """
+        if not case_arb_request:
+            return ""
+        
+        reason_list = []
+        
+        for request in case_arb_request:
+            type_arr = request.get('type', [])
+            
+            # 只处理有2或3个元素的 type 数组
+            if len(type_arr) not in [2, 3]:
+                continue
+            
+            # 获取第二个元素
+            second_type = type_arr[1]
+            second_name = second_type.get('name', '')
+            
+            # 情况1: 福利待遇争议 → 添加 "福利待遇"
+            if second_name == '福利待遇争议':
+                reason_list.append('福利待遇')
+                continue
+            
+            # 情况2: 确认劳动关系争议 → 添加 "确认劳动关系"
+            if second_name == '确认劳动关系争议':
+                reason_list.append('确认劳动关系')
+                continue
+            
+            # 情况3: 其他劳动争议 → 无视这个请求
+            if second_name == '其他劳动争议':
+                continue
+            
+            # 情况4: 根据第三个元素判断（只有3个元素时才处理）
+            if len(type_arr) >= 3:
+                third_type = type_arr[2]
+                third_name = third_type.get('name', '')
+                
+                # 尝试切割 "争议" 前的内容
+                if '争议' in third_name:
+                    match = re.match(r'(.+?)争议', third_name)
+                    if match:
+                        reason_list.append(match.group(1))
+                    else:
+                        reason_list.append(third_name)
+                else:
+                    # 没有 "争议" 字样，直接使用 name
+                    reason_list.append(third_name)
+        
+        # 去重：保持原有顺序，去除重复项
+        seen = set()
+        unique_list = []
+        for item in reason_list:
+            if item not in seen:
+                seen.add(item)
+                unique_list.append(item)
+        
+        # 用 "、" 连接列表元素
+        return '、'.join(unique_list)
+    
     def _preprocess_data(self, data, target_applicant=None, target_applicants=None, way=None):
         """
         预处理数据，计算所有变量值
@@ -972,6 +1040,14 @@ class DocumentGenerator:
             print(f"[结案方式] 使用用户选择的值: {way}")
         else:
             result['way'] = ''
+        
+        # 添加今天日期变量 {today_y}, {today_m}, {today_d}
+        from datetime import datetime
+        today = datetime.now()
+        result['today_y'] = str(today.year)
+        result['today_m'] = str(today.month)
+        result['today_d'] = str(today.day)
+        print(f"[今天日期] {result['today_y']}年{result['today_m']}月{result['today_d']}日")
         
         # 1. 基础字段
         case_no_raw = case_data.get('case_no', '')
@@ -1258,6 +1334,12 @@ class DocumentGenerator:
         
         # 请求数量
         result['request_count'] = str(len(case_arb_request))
+        
+        # 新的案由变量 {new_reason}
+        result['new_reason'] = self._process_new_reason(case_arb_request)
+        
+        # 将 {case_reason} 也设置为新案由值（完全替代）
+        result['case_reason'] = result['new_reason']
         
         if case_arb_request:
             # 生成请求编号列表 "1、2、3"

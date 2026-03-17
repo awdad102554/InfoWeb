@@ -100,8 +100,12 @@ InfoWeb/
 - {respondent}                       # 被申请人（普通模板: 原始案件值; 多页模板: 当前页被申请人名字）
 - {apply_at}                         # 申请日期
 - {handle_at}                        # 立案日期
-- {case_reason}                      # 案由
+- {case_reason}                      # 案由（原始值）
+- {new_reason}                         # 新案由（根据 case_arb_request.type 动态生成，自动去重）
 - {中文_today}                        # 今日中文日期
+- {today_y}                          # 今天年份，如 2026
+- {today_m}                          # 今天月份 1-12（无前导0）
+- {today_d}                          # 今天日期 1-31（无前导0）
 
 申请人信息:
 - {applicant_arr[0].name}
@@ -145,6 +149,7 @@ InfoWeb/
   - 03申请人送达回执调、裁、决定书3.docx
   - 03被申请人送达回执调、裁、决定书第三人3.docx
   - 05第三人送达回执3.docx
+  - 6-送达证明/送达证明.docx
 
 开庭信息 (从 tribunal_plan 提取):
 - {open}                             # 开庭日期时间 (2026年3月11日（星期三）上午9时)
@@ -497,6 +502,8 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-17**: 修改 `{case_reason}` 变量赋值逻辑，使其值完全等同于 `{new_reason}`（新计算的案由），统一案由显示，旧模板使用 `{case_reason}` 也会获得精确案由（`document_generator.py`）
+- **2026-03-17**: 添加新变量 `{new_reason}`，根据 `case_arb_request` 中每个请求的 `type` 数组动态生成案由：处理福利待遇争议、确认劳动关系争议、其他劳动争议三种特殊情况，其余类型根据第三个元素提取并去重（`document_generator.py`）
 - **2026-03-16**: 添加结案日期变量 `{end_at_y}`, `{end_at_m}`, `{end_at_d}`，分别表示结案日期的年、月、日（`document_generator.py`）
 - **2026-03-16**: 修复多进程 Token 缓存不一致问题，修改 `get_auth_headers()` 和 `check_and_renew_login()` 每次都从数据库读取最新 Token；修复数据库状态检测，将 `db_manager.connection` 改为 `db_manager.pool`（`modules/login_manager.py`, `app.py`）
 - **2026-03-13**: 裁决书制作页面添加 Dify AI 助手 iframe 嵌入，根据客户端 IP 自动切换 Dify 地址（192.168.123.16 或 10.99.144.29），删除 Flask 代理代码，改为客户端直接访问（`app.py`, `templates/award_make.html`）
