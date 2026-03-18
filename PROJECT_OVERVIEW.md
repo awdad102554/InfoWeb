@@ -12,6 +12,7 @@
 2. **内部API服务** - 企业信息查询、身份证信息查询
 3. **数据库API服务** - 案件数据增删改查
 4. **文档自动生成** - 根据案件数据自动填充 Word/Excel 模板生成仲裁文书
+5. **裁决书制作系统** - 基于 Dify Workflow 的智能裁决书生成
 
 ### 1.3 部署环境
 - **部署网段**: 10.99.144.x
@@ -238,6 +239,69 @@ InfoWeb/
 - `login_info` - 登录信息缓存
 - `company_cache` - 企业信息缓存
 - `idcard_cache` - 身份证信息缓存
+
+---
+
+## 四、核心模块详解（续）
+
+### 4.5 裁决书制作系统
+
+#### 功能概述
+基于 Dify Workflow 的智能裁决书生成系统，支持通过 AI 自动根据庭审笔录生成仲裁裁决书。
+
+#### 页面入口
+- **URL**: `/award/make?case_id={案件ID}`
+- **模板**: `templates/award_make.html`
+
+#### 核心流程
+```
+1. 用户填写裁决书要素（仲裁请求、申请人称、被申请人称、经审理查明、本委认为、终局/非终局裁决）
+2. 点击"生成Word"按钮
+3. 后端调用 Dify Workflow，传入：
+   - numb: 案号编号（如 202597）
+   - textPart1/2/3: 庭审笔录的三个部分
+4. Dify Workflow 异步生成裁决书（约5-10分钟）
+5. Dify 将生成的文件保存到 裁决书生成/ 目录
+6. Dify 直接更新数据库 裁决书要素保存.生成文件路径 字段
+7. 前端轮询 /api/award/status/{case_id} 查询生成状态
+8. 生成完成后显示文件下载卡片
+```
+
+#### 数据库表结构
+```sql
+CREATE TABLE `裁决书要素保存` (
+  `id` bigint PRIMARY KEY AUTO_INCREMENT,
+  `案号` varchar(255) NOT NULL COMMENT '案件编号（如202597）',
+  `仲裁请求` text COMMENT '仲裁请求内容',
+  `申请人称` text COMMENT '申请人称内容',
+  `被申请人称` text COMMENT '被申请人称内容',
+  `经审理查明` text COMMENT '经审理查明内容',
+  `本委认为` text COMMENT '本委认为内容',
+  `终局裁决` text COMMENT '终局裁决内容',
+  `非终局裁决` text COMMENT '非终局裁决内容',
+  `受理时间` varchar(255) COMMENT '受理时间',
+  `生成文件路径` varchar(1000) COMMENT '裁决书Word文件路径，多个文件用英文逗号分隔',
+  UNIQUE KEY `uk_case_no` (`案号`)
+);
+```
+
+#### API 接口
+| 接口 | 方法 | 功能 |
+|------|------|------|
+| `/api/award/elements/{case_id}` | GET/POST | 获取/保存裁决书要素 |
+| `/api/award/generate` | POST | 提交裁决书生成任务 |
+| `/api/award/status/{case_id}` | GET | 查询生成状态 |
+| `/api/award/download` | GET | 下载生成的裁决书 |
+
+#### 文件命名规则
+- 单个文件：`永劳人仲案字〔2025〕97号.docx`
+- 两个文件：`永劳人仲案字〔2025〕97-1号.docx`（终局）、`永劳人仲案字〔2025〕97-2号.docx`（非终局）
+
+#### Dify Workflow 配置
+- **API Key**: `app-eEMlvxJweUDbvuOaJrUyaCeo`
+- **Base URL**: `http://127.0.0.1:8020/v1`
+- **输入参数**: `numb`, `textPart1`, `textPart2`, `textPart3`
+- **输出目录**: `/vol2/1000/python-project/InfoWeb/裁决书生成/`
 
 ---
 
@@ -505,7 +569,8 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
-- **2026-03-18**: 完成裁决书Dify Workflow集成：添加庭审笔录自动检查功能、删除"加载示例"按钮；修改 `/api/award/generate` 调用Dify Workflow传入 textPart1/2/3 和 numb；新增 `/api/award/status/<case_id>` 查询接口和 `/api/award/download` 下载接口；前端添加生成状态轮询和文件列表显示；创建 `裁决书生成/` 目录存放生成的裁决书；数据库 `裁决书要素保存` 表添加 `生成文件路径` 字段（`app.py`, `templates/award_make.html`）
+- **2026-03-18**: 优化裁决书文件下载界面：修复JavaScript语法错误；将悬浮弹窗改为页面顶部嵌入式卡片；页面加载时显示简洁提示条（`templates/award_make.html`）
+- **2026-03-18**: 完成裁决书Dify Workflow集成：添加庭审笔录自动检查功能、删除"加载示例"按钮；修改 `/api/award/generate` 调用Dify Workflow传入 textPart1/2/3 和 numb；新增 `/api/award/status/<case_id>` 查询接口和 `/api/award/download` 下载接口；前端添加生成状态轮询和文件列表显示；创建 `裁决书生成/` 目录存放生成的裁决书；数据库 `裁决书要素保存` 表添加 `生成文件路径` 字段；更新 PROJECT_OVERVIEW.md 文档（`app.py`, `templates/award_make.html`, `PROJECT_OVERVIEW.md`）
 - **2026-03-17**: 添加仲裁申请书Word生成功能：新建 `templates/仲裁申请书模板.docx` 模板、添加 `/api/application/generate` API接口、前端添加"生成仲裁申请书"按钮；实现申请人和被申请人信息前缀加粗、换行后自动缩进两个汉字；删除原有打印申请书按钮；修复请求事项和总金额格式问题（`app.py`, `templates/index.html`, `static/js/scripts.js`, `templates/仲裁申请书模板.docx`）
 - **2026-03-16**: 添加结案日期变量 `{end_at_y}`, `{end_at_m}`, `{end_at_d}`，分别表示结案日期的年、月、日（`document_generator.py`）
 - **2026-03-16**: 修复多进程 Token 缓存不一致问题，修改 `get_auth_headers()` 和 `check_and_renew_login()` 每次都从数据库读取最新 Token；修复数据库状态检测，将 `db_manager.connection` 改为 `db_manager.pool`（`modules/login_manager.py`, `app.py`）
@@ -541,4 +606,4 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ---
 
-*文档更新时间: 2026-03-18 17:10*
+*文档更新时间: 2026-03-18 17:30*
