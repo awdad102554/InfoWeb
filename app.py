@@ -1943,20 +1943,23 @@ def proxy_file():
         # 获取Content-Type
         content_type = response.headers.get('Content-Type', 'application/octet-stream')
         
-        # 将文件流返回给客户端
+        # 读取文件内容并返回（非流式，避免gunicorn worker问题）
+        file_content = response.content
+        
         from flask import Response
-        def generate():
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
+        from urllib.parse import quote
+        
+        # 对中文文件名进行URL编码，确保header格式正确
+        encoded_filename = quote(file_name)
         
         return Response(
-            generate(),
+            file_content,
             status=200,
             headers={
                 'Content-Type': content_type,
-                'Content-Disposition': f'inline; filename="{file_name}"',
-                'Cache-Control': 'public, max-age=3600'
+                'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}",
+                'Cache-Control': 'public, max-age=3600',
+                'Content-Length': str(len(file_content))
             }
         )
         

@@ -474,6 +474,9 @@
                     document.getElementById('caseNoDisplay').textContent = currentCaseNo;
                     document.getElementById('caseNo').value = currentCaseNo;
                     document.title = `制作裁决书 - ${currentCaseNo}`;
+                    
+                    // 检查庭审笔录
+                    checkCourtRecord(caseData);
                 }
                 
                 // 2. 获取已保存的裁决书要素
@@ -527,6 +530,98 @@
             document.querySelectorAll('textarea').forEach(ta => checkFieldStatus(ta));
         }
 
+        // 检查庭审笔录
+        function checkCourtRecord(caseData) {
+            const writingJson = caseData.writing_json || caseData.writingJson || [];
+            
+            if (!Array.isArray(writingJson) || writingJson.length === 0) {
+                showRecordAlert('未找到任何笔录信息，请先上传庭审笔录', 'warning');
+                return;
+            }
+            
+            // 查找开庭笔录或庭审笔录
+            const courtRecord = writingJson.find(item => {
+                const title = item.title || '';
+                return title.includes('开庭笔录') || title.includes('庭审笔录');
+            });
+            
+            if (courtRecord) {
+                // 使用代理接口下载，解决跨网访问问题
+                const originalUrl = `http://10.96.10.78:8080/${courtRecord.save_path || ''}`;
+                const proxyUrl = `/api/file/proxy?url=${encodeURIComponent(originalUrl)}`;
+                showRecordAlert(
+                    `✅ 已找到庭审笔录：${courtRecord.title}`,
+                    'success',
+                    proxyUrl,
+                    originalUrl
+                );
+            } else {
+                // 列出所有可用的文档
+                const availableDocs = writingJson
+                    .map(item => item.title || '未命名')
+                    .filter(title => title !== '未命名')
+                    .join('、');
+                
+                showRecordAlert(
+                    `⚠️ 未找到庭审笔录。已上传的文档：${availableDocs || '无'}`,
+                    'warning'
+                );
+            }
+        }
+        
+        // 显示笔录提示
+        function showRecordAlert(message, type, proxyUrl = null, originalUrl = null) {
+            // 检查是否已存在提示，存在则移除
+            const existingAlert = document.getElementById('courtRecordAlert');
+            if (existingAlert) {
+                existingAlert.remove();
+            }
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.id = 'courtRecordAlert';
+            
+            const isSuccess = type === 'success';
+            const bgColor = isSuccess ? 'bg-green-50' : 'bg-yellow-50';
+            const borderColor = isSuccess ? 'border-green-200' : 'border-yellow-200';
+            const textColor = isSuccess ? 'text-green-800' : 'text-yellow-800';
+            const icon = isSuccess ? 'fa-check-circle' : 'fa-exclamation-triangle';
+            
+            let html = `
+                <div class="${bgColor} ${borderColor} border rounded-lg p-4 mb-4">
+                    <div class="flex items-start">
+                        <i class="fas ${icon} ${textColor} mt-1 mr-3"></i>
+                        <div class="flex-1">
+                            <p class="${textColor} font-medium">${message}</p>
+            `;
+            
+            if (proxyUrl) {
+                html += `
+                            <div class="mt-2 flex items-center gap-3">
+                                <a href="${proxyUrl}" target="_blank" 
+                                   class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium transition-colors">
+                                    <i class="fas fa-download mr-1.5"></i>
+                                    下载庭审笔录
+                                </a>
+                                <span class="text-xs text-gray-500">通过代理服务器安全访问</span>
+                            </div>
+                `;
+            }
+            
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            alertDiv.innerHTML = html;
+            
+            // 插入到内容区域的最上方
+            const contentArea = document.getElementById('contentArea');
+            if (contentArea) {
+                contentArea.insertBefore(alertDiv, contentArea.firstChild);
+            }
+        }
+        
         // 阿拉伯数字转中文数字
         function numToChinese(num) {
             const chineseNums = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
