@@ -292,9 +292,6 @@
                         <button onclick="clearAll()" class="flex-1 py-3 border-2 border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:border-gray-400 hover:bg-gray-50 transition-all">
                             <i class="fas fa-trash-alt mr-2"></i>清空内容
                         </button>
-                        <button onclick="loadExample()" class="flex-1 py-3 border-2 border-blue-300 rounded-xl text-sm font-semibold text-blue-700 hover:border-blue-400 hover:bg-blue-50 transition-all">
-                            <i class="fas fa-magic mr-2"></i>加载示例
-                        </button>
                     </div>
                 </div>
 
@@ -454,7 +451,10 @@
                 return;
             }
             
-            loadData();
+            loadData().then(() => {
+                // 页面加载完成后检查是否已有生成的文件
+                checkExistingFiles();
+            });
         };
 
         // 加载数据
@@ -699,6 +699,8 @@
         }
 
         // 生成Word（调用Dify Workflow）
+        let pollingInterval = null;
+        
         async function generateWord() {
             const data = {
                 case_id: currentCaseId,
@@ -720,7 +722,7 @@
                 return;
             }
             
-            showToast('正在生成Word文档...');
+            showGeneratingStatus('生成任务已提交，预计需要5-10分钟...');
             
             try {
                 const response = await fetch('/api/award/generate', {
@@ -729,26 +731,155 @@
                     body: JSON.stringify(data)
                 });
                 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.message || '生成失败');
+                const result = await response.json();
+                
+                if (!response.ok || result.code !== 200) {
+                    throw new Error(result.message || '生成任务提交失败');
                 }
                 
-                // 下载文件
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `仲裁裁决书_${currentCaseNo || currentCaseId}.docx`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url);
+                showToast('生成任务已提交，开始轮询查询...');
                 
-                showToast('Word文档已生成！');
+                // 开始轮询查询生成状态
+                startPollingStatus();
+                
             } catch (error) {
                 console.error('生成失败:', error);
                 showToast('生成失败: ' + error.message);
+                hideGeneratingStatus();
+            }
+        }
+        
+        // 显示生成中状态
+        function showGeneratingStatus(message) {
+            let statusDiv = document.getElementById('generatingStatus');
+            if (!statusDiv) {
+                statusDiv = document.createElement('div');
+                statusDiv.id = 'generatingStatus';
+                statusDiv.className = 'fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3';
+                document.body.appendChild(statusDiv);
+            }
+            
+            statusDiv.innerHTML = `
+                <div class="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
+                <span>${message}</span>
+            `;
+            statusDiv.classList.remove('hidden');
+        }
+        
+        // 隐藏生成中状态
+        function hideGeneratingStatus() {
+            const statusDiv = document.getElementById('generatingStatus');
+            if (statusDiv) {
+                statusDiv.classList.add('hidden');
+            }
+        }
+        
+        // 开始轮询查询状态
+        function startPollingStatus() {
+            // 清除之前的轮询
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            
+            // 立即查询一次
+            checkGenerationStatus();
+            
+            // 每10秒查询一次，最多查询60次（10分钟）
+            let pollCount = 0;
+            const maxPolls = 60;
+            
+            pollingInterval = setInterval(async () => {
+                pollCount++;
+                if (pollCount >= maxPolls) {
+                    clearInterval(pollingInterval);
+                    showToast('生成时间较长，请稍后手动刷新查看');
+                    hideGeneratingStatus();
+                    return;
+                }
+                
+                await checkGenerationStatus();
+            }, 10000);
+        }
+        
+        // 检查生成状态
+        async function checkGenerationStatus() {
+            try {
+                const response = await fetch(`/api/award/status/${currentCaseId}`);
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data) {
+                    const status = result.data.status;
+                    
+                    if (status === 'completed') {
+                        // 生成完成
+                        clearInterval(pollingInterval);
+                        hideGeneratingStatus();
+                        showGeneratedFiles(result.data.file_paths);
+                        showToast('裁决书生成完成！');
+                    } else {
+                        // 仍在生成中
+                        showGeneratingStatus(`裁决书生成中，请耐心等待... (${result.data.bianhao || ''})`);
+                    }
+                }
+            } catch (error) {
+                console.error('查询状态失败:', error);
+            }
+        }
+        
+        // 显示生成的文件列表
+        function showGeneratedFiles(filePaths) {
+            // 移除已存在的文件列表
+            const existingList = document.getElementById('generatedFilesList');
+            if (existingList) {
+                existingList.remove();
+            }
+            
+            const filesDiv = document.createElement('div');
+            filesDiv.id = 'generatedFilesList';
+            filesDiv.className = 'fixed top-24 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-xl z-50 p-4 min-w-[300px] max-w-[500px]';
+            
+            let filesHtml = `
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-bold text-gray-800">裁决书已生成</h3>
+                    <button onclick="document.getElementById('generatedFilesList').remove()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="space-y-2">
+            `;
+            
+            filePaths.forEach((path, index) => {
+                const fileName = path.split('/').pop();
+                filesHtml += `
+                    <div class="flex items-center justify-between bg-gray-50 p-2 rounded">
+                        <span class="text-sm text-gray-700 truncate mr-2" title="${fileName}">${fileName}</span>
+                        <a href="/api/award/download?path=${encodeURIComponent(path)}" 
+                           target="_blank"
+                           class="text-blue-600 hover:text-blue-800 text-sm whitespace-nowrap">
+                            <i class="fas fa-download mr-1"></i>下载
+                        </a>
+                    </div>
+                `;
+            });
+            
+            filesHtml += '</div>';
+            filesDiv.innerHTML = filesHtml;
+            document.body.appendChild(filesDiv);
+        }
+        
+        // 页面加载时检查是否有已生成的文件
+        async function checkExistingFiles() {
+            if (!currentCaseId) return;
+            
+            try {
+                const response = await fetch(`/api/award/status/${currentCaseId}`);
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data && result.data.status === 'completed') {
+                    showGeneratedFiles(result.data.file_paths);
+                }
+            } catch (error) {
+                console.error('检查已有文件失败:', error);
             }
         }
 
@@ -864,32 +995,6 @@
                 tabPreview.classList.remove('bg-white', 'text-blue-600', 'shadow-sm');
                 tabPreview.classList.add('text-gray-600', 'hover:text-gray-900');
             }
-        }
-
-        // 加载示例
-        function loadExample() {
-            const example = {
-                arbitrationRequest: '1、请求裁决被申请人支付2024年1月至3月工资差额人民币15,000元；\n2、请求裁决被申请人支付违法解除劳动合同赔偿金人民币30,000元；\n3、请求裁决被申请人承担本案仲裁费用。',
-                applicantClaim: '申请人于2023年6月1日入职被申请人公司，担任技术部经理职务，双方签订了为期三年的劳动合同。在职期间，申请人勤勉尽责，但被申请人自2024年1月起无故拖欠工资，并于2024年3月15日单方面解除劳动合同。申请人认为被申请人的行为严重违反了《劳动合同法》的相关规定，侵害了申请人的合法权益。',
-                respondentClaim: '被申请人辩称：1、因公司经营困难，确实存在迟延发放工资的情况，但并非恶意拖欠；2、申请人于2024年3月期间多次旷工，严重违反公司规章制度，公司系合法解除劳动合同，无需支付赔偿金。',
-                factsFound: '经本委审理查明：申请人于2023年6月1日入职被申请人公司，担任技术部经理，月工资标准为15,000元。被申请人确实存在未足额支付2024年1月至3月工资的情形。被申请人主张申请人旷工，但未能提供充分有效的考勤记录及规章制度公示证据。',
-                committeeOpinion: '本委认为：用人单位应当按照劳动合同约定和国家规定，向劳动者及时足额支付劳动报酬。被申请人拖欠工资的行为已构成违法。关于解除劳动合同，被申请人未能举证证明申请人存在旷工事实及规章制度经过民主程序制定并已向劳动者公示，应承担举证不能的不利后果。被申请人单方解除劳动合同缺乏事实和法律依据，属于违法解除。',
-                finalDecision: '一、被申请人于本裁决生效之日起十日内支付申请人2024年1月至3月工资差额人民币15,000元；\n二、被申请人于本裁决生效之日起十日内支付申请人违法解除劳动合同赔偿金人民币30,000元；\n三、驳回申请人的其他仲裁请求。',
-                nonFinalDecision: ''
-            };
-            
-            document.getElementById('arbitrationRequest').value = example.arbitrationRequest;
-            document.getElementById('applicantClaim').value = example.applicantClaim;
-            document.getElementById('respondentClaim').value = example.respondentClaim;
-            document.getElementById('factsFound').value = example.factsFound;
-            document.getElementById('committeeOpinion').value = example.committeeOpinion;
-            document.getElementById('finalDecision').value = example.finalDecision;
-            document.getElementById('nonFinalDecision').value = example.nonFinalDecision;
-            
-            // 更新状态
-            document.querySelectorAll('textarea').forEach(ta => checkFieldStatus(ta));
-            updatePreview();
-            showToast('已加载示例数据');
         }
 
         // 清空

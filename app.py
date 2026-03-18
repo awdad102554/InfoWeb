@@ -11,6 +11,7 @@
 
 import sys
 import os
+import io
 
 # 添加modules目录到Python路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules'))
@@ -2777,87 +2778,152 @@ def award_elements(case_id):
 def generate_award():
     """
     生成裁决书Word文档
-    调用Dify Workflow生成Word文档（预留接口）
+    调用Dify Workflow生成Word文档，传入庭审笔录的part1/part2/part3
+    Workflow 异步执行，前端通过轮询查询生成状态
     """
     try:
         data = request.get_json() or {}
         
-        # TODO: 调用Dify Workflow生成Word文档
-        # 目前返回前端导出的HTML格式Word文档作为临时方案
-        
         case_id = data.get('case_id', '')
         case_no = data.get('case_no', '')
         
-        # 收集所有字段内容
-        content_parts = []
+        # Dify 配置
+        DIFY_API_KEY = "app-eEMlvxJweUDbvuOaJrUyaCeo"
+        DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
+        DIFY_USER_ID = f"user-{case_id}" if case_id else "user-award"
         
-        if data.get('受理时间'):
-            content_parts.append(f"<p>受理时间：{data.get('受理时间')}</p>")
+        # Step 1: 获取案件详情，查找庭审笔录
+        logger.info(f"[GenerateAward] 查找庭审笔录, case_id={case_id}")
         
-        fields_mapping = [
-            ('仲裁请求', '一、仲裁请求'),
-            ('申请人称', '二、申请人称'),
-            ('被申请人称', '三、被申请人称'),
-            ('经审理查明', '四、经审理查明'),
-            ('本委认为', '五、本委认为'),
-            ('终局裁决', '六、终局裁决'),
-            ('非终局裁决', '七、非终局裁决'),
-        ]
+        if not login_manager.check_and_renew_login():
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法获取案件信息',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
         
-        for field, title in fields_mapping:
-            value = data.get(field, '')
-            if value and value.strip():
-                # 将换行符转换为<br>和<p>标签
-                paragraphs = value.split('\n')
-                paragraphs_html = ''.join([f'<p class="indent-8">{p}</p>' for p in paragraphs if p.strip()])
-                content_parts.append(f'<h4>{title}</h4>{paragraphs_html}')
+        headers = login_manager.get_auth_headers()
+        detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
         
-        content = '\n'.join(content_parts)
-        
-        # 生成HTML格式的Word文档
-        html_content = f"""
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-              xmlns:w='urn:schemas-microsoft-com:office:word' 
-              xmlns='http://www.w3.org/TR/REC-html40'>
-        <head>
-            <meta charset="utf-8">
-            <title>仲裁裁决书</title>
-            <style>
-                body {{ font-family: 'SimSun', '宋体', serif; line-height: 1.8; font-size: 16pt; padding: 40px; }}
-                .indent-8 {{ text-indent: 2em; margin: 10pt 0; }}
-                h2 {{ font-size: 22pt; font-weight: bold; text-align: center; margin-bottom: 20pt; }}
-                h4 {{ font-size: 16pt; font-weight: bold; margin-top: 20pt; margin-bottom: 10pt; }}
-                p {{ margin: 10pt 0; }}
-            </style>
-        </head>
-        <body>
-            <h2>仲裁裁决书</h2>
-            <p style="text-align: center; margin-bottom: 30pt;">{case_no or ''}</p>
-            {content}
-            <div style="margin-top: 60pt;">
-                <div style="display: flex; justify-content: space-between;">
-                    <div>仲裁员：_______________</div>
-                    <div>日期：_______年____月____日</div>
-                </div>
-                <div style="text-align: center; margin-top: 30pt; font-size: 12pt;">
-                    本裁决为终局裁决
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-        # 生成响应
-        from flask import Response
-        response = Response(
-            html_content,
-            mimetype='application/msword',
-            headers={
-                'Content-Disposition': f'attachment; filename="仲裁裁决书_{case_no or case_id}.doc"'
-            }
+        response = requests.post(
+            detail_url,
+            headers=headers,
+            json={'id': case_id},
+            timeout=30
         )
         
-        return response
+        if response.status_code != 200:
+            return jsonify({
+                'code': 500,
+                'message': '获取案件详情失败',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        case_data = response.json()
+        data_content = case_data.get('data', {})
+        if isinstance(data_content, dict):
+            case_detail = data_content
+        elif isinstance(data_content, list) and len(data_content) > 0:
+            case_detail = data_content[0] if isinstance(data_content[0], dict) else {}
+        else:
+            case_detail = {}
+        
+        # Step 2: 查找庭审笔录
+        writing_json = case_detail.get('writing_json', [])
+        court_record = None
+        
+        for item in writing_json:
+            title = item.get('title', '')
+            if '开庭笔录' in title or '庭审笔录' in title:
+                court_record = item
+                break
+        
+        if not court_record:
+            return jsonify({
+                'code': 400,
+                'message': '未找到庭审笔录，请先上传庭审笔录',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # Step 3: 从 json 字段中提取 part1, part2, part3
+        json_str = court_record.get('json', '{}')
+        try:
+            record_json = json.loads(json_str) if isinstance(json_str, str) else json_str
+        except json.JSONDecodeError:
+            record_json = {}
+        
+        text_part1 = record_json.get('part1', '') or ''
+        text_part2 = record_json.get('part2', '') or ''
+        text_part3 = record_json.get('part3', '') or ''
+        
+        if not text_part1 and not text_part2 and not text_part3:
+            return jsonify({
+                'code': 400,
+                'message': '庭审笔录内容为空（part1/part2/part3均为空）',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        logger.info(f"[GenerateAward] 笔录内容长度: part1={len(text_part1)}, part2={len(text_part2)}, part3={len(text_part3)}")
+        
+        # Step 4: 提取案号中的编号 (如 "明永劳人仲案字[2025]97号" -> "202597")
+        bianhao = case_id
+        if case_no:
+            match = re.search(r'\[(\d{4})\](\d+)', case_no)
+            if match:
+                year, num = match.groups()
+                bianhao = f"{year}{num}"
+        
+        logger.info(f"[GenerateAward] 调用Workflow, numb={bianhao}")
+        
+        # Step 5: 调用 Dify Workflow（异步，不等待结果）
+        workflow_url = f"{DIFY_BASE_URL}/workflows/run"
+        workflow_headers = {
+            "Authorization": f"Bearer {DIFY_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "inputs": {
+                "numb": bianhao,
+                "textPart1": text_part1,
+                "textPart2": text_part2,
+                "textPart3": text_part3
+            },
+            "response_mode": "blocking",
+            "user": DIFY_USER_ID
+        }
+        
+        # 使用较短的超时时间，因为Dify会立即返回任务ID
+        workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=30)
+        
+        if workflow_resp.status_code != 200:
+            workflow_result = workflow_resp.json() if workflow_resp.text else {}
+            logger.error(f"[GenerateAward] Workflow调用失败: {workflow_result}")
+            return jsonify({
+                'code': 500,
+                'message': f'Dify Workflow启动失败: {workflow_result.get("message", "未知错误")}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        workflow_result = workflow_resp.json()
+        logger.info(f"[GenerateAward] Workflow已启动: {workflow_result}")
+        
+        # 立即返回，告诉前端生成任务已提交
+        return jsonify({
+            'code': 200,
+            'message': '裁决书生成任务已提交，请稍后查看',
+            'data': {
+                'bianhao': bianhao,
+                'workflow_id': workflow_result.get('data', {}).get('id'),
+                'status': 'generating'
+            },
+            'timestamp': datetime.now().isoformat()
+        })
         
     except Exception as e:
         logger.error(f"生成裁决书失败: {str(e)}")
@@ -2866,6 +2932,173 @@ def generate_award():
         return jsonify({
             'code': 500,
             'message': f'生成失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/award/status/<case_id>', methods=['GET'])
+def award_status(case_id):
+    """
+    查询裁决书生成状态
+    返回生成文件路径（如果有）
+    """
+    try:
+        # 从案号提取编号
+        import re
+        bianhao = case_id
+        
+        # 先获取案件详情提取案号
+        if login_manager.check_and_renew_login():
+            headers = login_manager.get_auth_headers()
+            detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
+            response = requests.post(
+                detail_url,
+                headers=headers,
+                json={'id': case_id},
+                timeout=30
+            )
+            if response.status_code == 200:
+                case_data = response.json()
+                data_content = case_data.get('data', {})
+                if isinstance(data_content, dict):
+                    case_detail = data_content
+                elif isinstance(data_content, list) and len(data_content) > 0:
+                    case_detail = data_content[0] if isinstance(data_content[0], dict) else {}
+                else:
+                    case_detail = {}
+                
+                case_no = case_detail.get('case_no', '')
+                if case_no:
+                    match = re.search(r'\[(\d{4})\](\d+)', case_no)
+                    if match:
+                        year, num = match.groups()
+                        bianhao = f"{year}{num}"
+        
+        # 查询数据库
+        conn = db_manager.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        try:
+            cursor.execute(
+                "SELECT * FROM `裁决书要素保存` WHERE `案号` = %s",
+                (bianhao,)
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                file_paths = result.get('生成文件路径', '')
+                if file_paths:
+                    # 文件已生成
+                    return jsonify({
+                        'code': 200,
+                        'message': '裁决书已生成',
+                        'data': {
+                            'status': 'completed',
+                            'file_paths': file_paths.split(','),
+                            'generated_at': result.get('updated_at', '')
+                        },
+                        'timestamp': datetime.now().isoformat()
+                    })
+                else:
+                    # 尚未生成
+                    return jsonify({
+                        'code': 200,
+                        'message': '裁决书生成中，请稍后',
+                        'data': {
+                            'status': 'generating',
+                            'file_paths': [],
+                            'bianhao': bianhao
+                        },
+                        'timestamp': datetime.now().isoformat()
+                    })
+            else:
+                return jsonify({
+                    'code': 404,
+                    'message': '未找到该案件的裁决书要素',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                })
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"查询裁决书状态失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'code': 500,
+            'message': f'查询失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/award/download', methods=['GET'])
+def download_award():
+    """
+    下载裁决书文件
+    参数:
+      - path: 文件路径（URL编码）
+    """
+    try:
+        from urllib.parse import unquote
+        
+        # 获取文件路径参数
+        file_path = request.args.get('path', '')
+        if not file_path:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: path',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # URL解码
+        file_path = unquote(file_path)
+        
+        # 安全检查：确保路径在项目目录下
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_dir, file_path)
+        
+        # 规范化路径并检查是否在允许范围内
+        full_path = os.path.normpath(full_path)
+        if not full_path.startswith(base_dir):
+            logger.warning(f"尝试访问非法路径: {file_path}")
+            return jsonify({
+                'code': 403,
+                'message': '访问被拒绝: 非法文件路径',
+                'timestamp': datetime.now().isoformat()
+            }), 403
+        
+        # 检查文件是否存在
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            logger.warning(f"文件不存在: {full_path}")
+            return jsonify({
+                'code': 404,
+                'message': '文件不存在',
+                'timestamp': datetime.now().isoformat()
+            }), 404
+        
+        # 获取文件名
+        file_name = os.path.basename(full_path)
+        
+        # 返回文件
+        from flask import send_file
+        return send_file(
+            full_path,
+            as_attachment=True,
+            download_name=file_name,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        
+    except Exception as e:
+        logger.error(f"下载裁决书失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'code': 500,
+            'message': f'查询失败: {str(e)}',
             'data': None,
             'timestamp': datetime.now().isoformat()
         }), 500
