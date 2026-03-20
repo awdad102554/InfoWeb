@@ -292,6 +292,13 @@ CREATE TABLE `裁决书要素保存` (
 | `/api/award/generate` | POST | 提交裁决书生成任务 |
 | `/api/award/status/{case_id}` | GET | 查询生成状态 |
 | `/api/award/download` | GET | 下载生成的裁决书 |
+| `/api/workflow/generate-claim` | POST | 自动生成申请人称/被申请人称 |
+
+#### Dify Workflow 配置（称述自动生成）
+- **申请人称 API Key**: `app-S5FnZhPbetGmnw6A8mefsCVj`
+- **被申请人称 API Key**: `app-iPP2ZBN20yYiYC6hT8pu04Rj`
+- **Base URL**: `http://127.0.0.1:8020/v1`
+- **输入参数**: `count`, `request`, `textPart3`
 
 #### 文件命名规则
 - 单个文件：`永劳人仲案字〔2025〕97号.docx`
@@ -569,6 +576,14 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-20**: 裁决书制作页面完善自动生成功能（最终版）：
+  - 在"申请人称"和"被申请人称"字段旁边添加"自动生成"按钮
+  - 申请人称自动生成：弹窗只输入限制字数（默认600），仲裁请求按优先级自动获取（数据库>页面>接口）
+  - 被申请人称自动生成：弹窗输入限制字数和仲裁请求
+  - 自动获取庭审笔录part3内容作为workflow输入
+  - 申请人称使用key: `app-S5FnZhPbetGmnw6A8mefsCVj`，被申请人称使用key: `app-iPP2ZBN20yYiYC6hT8pu04Rj`
+  - 仲裁请求字段旁边添加"自动获取"按钮，用于从接口数据回档默认内容
+  - 新增后端API `/api/workflow/generate-claim`（`templates/award_make.html`, `app.py`）
 - **2026-03-18**: 优化裁决书文件下载界面：修复JavaScript语法错误；将悬浮弹窗改为页面顶部嵌入式卡片；页面加载时显示简洁提示条（`templates/award_make.html`）
 - **2026-03-18**: 完成裁决书Dify Workflow集成：添加庭审笔录自动检查功能、删除"加载示例"按钮；修改 `/api/award/generate` 调用Dify Workflow传入 textPart1/2/3 和 numb；新增 `/api/award/status/<case_id>` 查询接口和 `/api/award/download` 下载接口；前端添加生成状态轮询和文件列表显示；创建 `裁决书生成/` 目录存放生成的裁决书；数据库 `裁决书要素保存` 表添加 `生成文件路径` 字段；更新 PROJECT_OVERVIEW.md 文档（`app.py`, `templates/award_make.html`, `PROJECT_OVERVIEW.md`）
 - **2026-03-17**: 添加仲裁申请书Word生成功能：新建 `templates/仲裁申请书模板.docx` 模板、添加 `/api/application/generate` API接口、前端添加"生成仲裁申请书"按钮；实现申请人和被申请人信息前缀加粗、换行后自动缩进两个汉字；删除原有打印申请书按钮；修复请求事项和总金额格式问题（`app.py`, `templates/index.html`, `static/js/scripts.js`, `templates/仲裁申请书模板.docx`）
@@ -606,4 +621,4 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ---
 
-*文档更新时间: 2026-03-18 17:30*
+*文档更新时间: 2026-03-20 11:00*

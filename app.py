@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 # 创建Flask应用
 app = Flask(__name__, static_folder='static', template_folder='templates')
+app.config['TEMPLATES_AUTO_RELOAD'] = True  # 启用模板自动重新加载
 CORS(app)  # 启用CORS支持
 
 # 初始化管理器
@@ -2934,6 +2935,124 @@ def generate_award():
             'message': f'生成失败: {str(e)}',
             'data': None,
             'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/workflow/generate-claim', methods=['POST'])
+def generate_claim_workflow():
+    """
+    调用Dify Workflow自动生成申请人称或被申请人称
+    调用URL和生成Word一致，但key不同：
+    - 申请人称: app-S5FnZhPbetGmnw6A8mefsCVj
+    - 被申请人称: app-iPP2ZBN20yYiYC6hT8pu04Rj
+    
+    请求参数:
+    - case_id: 案件ID
+    - case_no: 案号
+    - claim_type: 'applicantClaim' 或 'respondentClaim'
+    - count: 限制字数
+    - request: 仲裁请求内容
+    - textPart3: 庭审笔录part3内容
+    - is_applicant: 是否为申请人称
+    """
+    try:
+        data = request.get_json() or {}
+        
+        case_id = data.get('case_id', '')
+        case_no = data.get('case_no', '')
+        claim_type = data.get('claim_type', '')
+        count = data.get('count', 600)
+        request_content = data.get('request', '')
+        text_part3 = data.get('textPart3', '')
+        is_applicant = data.get('is_applicant', True)
+        
+        logger.info(f"[GenerateClaim] 接收到请求: claim_type={claim_type}, is_applicant={is_applicant}")
+        
+        # Dify 配置
+        # 根据类型选择不同的key
+        if claim_type == 'respondentClaim':
+            DIFY_API_KEY = "app-iPP2ZBN20yYiYC6hT8pu04Rj"  # 被申请人称
+        else:
+            DIFY_API_KEY = "app-S5FnZhPbetGmnw6A8mefsCVj"  # 申请人称
+        DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
+        DIFY_USER_ID = f"user-{case_id}-claim" if case_id else "user-claim"
+        
+        logger.info(f"[GenerateClaim] 调用Workflow, case_id={case_id}, claim_type={claim_type}, count={count}")
+        logger.info(f"[GenerateClaim] 使用API Key: {DIFY_API_KEY[:20]}...")
+        logger.info(f"[GenerateClaim] 参数: count={count}, request长度={len(request_content)}, textPart3长度={len(text_part3)}")
+        
+        # 调用 Dify Workflow（阻塞模式，等待结果）
+        workflow_url = f"{DIFY_BASE_URL}/workflows/run"
+        workflow_headers = {
+            "Authorization": f"Bearer {DIFY_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "inputs": {
+                "count": str(count),
+                "request": request_content,
+                "textPart3": text_part3
+            },
+            "response_mode": "blocking",
+            "user": DIFY_USER_ID
+        }
+        
+        # 设置较长的超时时间（约1分钟）
+        workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=120)
+        
+        if workflow_resp.status_code != 200:
+            workflow_result = workflow_resp.json() if workflow_resp.text else {}
+            logger.error(f"[GenerateClaim] Workflow调用失败: {workflow_result}")
+            return jsonify({
+                'success': False,
+                'content': None,
+                'message': f'Dify Workflow调用失败: {workflow_result.get("message", "未知错误")}'
+            }), 500
+        
+        workflow_result = workflow_resp.json()
+        logger.info(f"[GenerateClaim] Workflow返回: {workflow_result}")
+        
+        # 从返回结果中提取生成的内容
+        # Dify Workflow 返回结构可能需要根据实际情况调整
+        result_data = workflow_result.get('data', {})
+        
+        # 尝试从outputs中获取结果
+        outputs = result_data.get('outputs', {})
+        generated_content = outputs.get('result', '') or outputs.get('content', '') or outputs.get('text', '')
+        
+        # 如果outputs中没有，尝试从answer或其他字段获取
+        if not generated_content:
+            generated_content = result_data.get('answer', '') or result_data.get('content', '')
+        
+        if not generated_content:
+            return jsonify({
+                'success': False,
+                'content': None,
+                'message': '工作流返回结果为空'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'content': generated_content,
+            'message': '生成成功'
+        })
+        
+    except requests.exceptions.Timeout:
+        logger.error("[GenerateClaim] Workflow调用超时")
+        return jsonify({
+            'success': False,
+            'content': None,
+            'message': '工作流调用超时（超过2分钟），请稍后重试'
+        }), 504
+    except Exception as e:
+        logger.error(f"生成称述失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'content': None,
+            'message': f'生成失败: {str(e)}'
         }), 500
 
 

@@ -174,9 +174,17 @@
                                     <span class="section-number">一</span>
                                     仲裁请求
                                 </h3>
-                                <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full status-badge hidden">
-                                    <i class="fas fa-check mr-1"></i>已填写
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="resetArbitrationRequest(event)" 
+                                            id="btnResetRequest"
+                                            class="text-xs bg-gradient-to-r from-orange-400 to-amber-500 text-white px-3 py-1.5 rounded-md hover:from-orange-500 hover:to-amber-600 transition-all flex items-center shadow-sm"
+                                            title="从接口数据回档默认仲裁请求">
+                                        <i class="fas fa-rotate-left mr-1.5"></i>自动获取
+                                    </button>
+                                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full status-badge hidden">
+                                        <i class="fas fa-check mr-1"></i>已填写
+                                    </span>
+                                </div>
                             </div>
                             <textarea id="arbitrationRequest" rows="4" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
@@ -191,9 +199,16 @@
                                     <span class="section-number">二</span>
                                     申请人称
                                 </h3>
-                                <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full status-badge hidden">
-                                    <i class="fas fa-check mr-1"></i>已填写
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="autoGenerateClaim('applicantClaim', event)" 
+                                            id="btnAutoApplicant"
+                                            class="text-xs bg-gradient-to-r from-green-500 to-emerald-500 text-white px-3 py-1.5 rounded-md hover:from-green-600 hover:to-emerald-600 transition-all flex items-center shadow-sm">
+                                        <i class="fas fa-magic mr-1.5"></i>自动生成
+                                    </button>
+                                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full status-badge hidden">
+                                        <i class="fas fa-check mr-1"></i>已填写
+                                    </span>
+                                </div>
                             </div>
                             <textarea id="applicantClaim" rows="5" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
@@ -208,9 +223,16 @@
                                     <span class="section-number">三</span>
                                     被申请人称
                                 </h3>
-                                <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full status-badge hidden">
-                                    <i class="fas fa-check mr-1"></i>已填写
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="autoGenerateClaim('respondentClaim', event)" 
+                                            id="btnAutoRespondent"
+                                            class="text-xs bg-gradient-to-r from-green-500 to-emerald-500 text-white px-3 py-1.5 rounded-md hover:from-green-600 hover:to-emerald-600 transition-all flex items-center shadow-sm">
+                                        <i class="fas fa-magic mr-1.5"></i>自动生成
+                                    </button>
+                                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full status-badge hidden">
+                                        <i class="fas fa-check mr-1"></i>已填写
+                                    </span>
+                                </div>
                             </div>
                             <textarea id="respondentClaim" rows="5" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
@@ -469,6 +491,9 @@
                 if (caseResult.code === 200 && caseResult.data) {
                     caseData = caseResult.data.data || caseResult.data;
                     if (caseData.data) caseData = caseData.data;
+                    
+                    // 缓存案件数据供后续使用
+                    cachedCaseData = caseData;
                     
                     currentCaseNo = caseData.case_no || '';
                     document.getElementById('caseNoDisplay').textContent = currentCaseNo;
@@ -1126,6 +1151,346 @@
                 toast.style.transition = 'all 0.3s';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
+        }
+
+        // 案件数据缓存（用于获取笔录内容）
+        let cachedCaseData = null;
+        
+        // 从接口数据获取仲裁请求并填充（回档默认内容）
+        function resetArbitrationRequest(event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            
+            if (!cachedCaseData) {
+                showToast('暂无案件数据，请稍后重试');
+                return;
+            }
+            
+            const requests = cachedCaseData.case_arb_request || cachedCaseData.requests || [];
+            if (requests.length === 0) {
+                showToast('接口数据中没有找到仲裁请求');
+                return;
+            }
+            
+            // 格式化仲裁请求
+            const requestText = requests.map((req, idx) => 
+                `${numToChinese(idx + 1)}、${req.intro || req.content || req.request_content || ''}`
+            ).join('\n');
+            
+            // 填充到文本框
+            const textarea = document.getElementById('arbitrationRequest');
+            textarea.value = requestText;
+            
+            // 触发更新
+            updatePreview();
+            checkFieldStatus(textarea);
+            
+            showToast('已从接口数据回档仲裁请求');
+        }
+
+        // 获取仲裁请求内容（优先级：数据库 > 页面已有内容 > 接口数据）
+        async function getArbitrationRequest() {
+            // 1. 优先从数据库获取
+            try {
+                const response = await fetch(`/api/award/elements/${currentCaseId}`);
+                const result = await response.json();
+                if (result.code === 200 && result.data && result.data.仲裁请求) {
+                    console.log('使用数据库中的仲裁请求');
+                    return result.data.仲裁请求;
+                }
+            } catch (e) {
+                console.log('数据库查询失败:', e);
+            }
+            
+            // 2. 其次从页面已输入的内容获取
+            const pageValue = document.getElementById('arbitrationRequest').value;
+            if (pageValue && pageValue.trim()) {
+                console.log('使用页面已有的仲裁请求');
+                return pageValue;
+            }
+            
+            // 3. 最后从案件接口数据预填充
+            if (cachedCaseData) {
+                const requests = cachedCaseData.case_arb_request || cachedCaseData.requests || [];
+                if (requests.length > 0) {
+                    console.log('使用接口返回的仲裁请求数据');
+                    return requests.map((req, idx) => 
+                        `${numToChinese(idx + 1)}、${req.intro || req.content || req.request_content || ''}`
+                    ).join('\n');
+                }
+            }
+            
+            return '';
+        }
+
+        // 自动生成申请人称/被申请人称
+        // 类型: 'applicantClaim' 或 'respondentClaim'
+        async function autoGenerateClaim(fieldType, event) {
+            // 阻止冒泡，避免触发父元素的点击事件
+            if (event) {
+                event.stopPropagation();
+            }
+            
+            const isApplicant = fieldType === 'applicantClaim';
+            const fieldName = isApplicant ? '申请人称' : '被申请人称';
+            
+            // 检查是否有笔录数据
+            const textPart3 = getCourtRecordPart3();
+            if (!textPart3) {
+                showToast('未找到庭审笔录，无法自动生成');
+                return;
+            }
+            
+            // 获取仲裁请求内容（优先级：数据库 > 页面已有内容 > 接口数据）
+            const defaultRequest = await getArbitrationRequest();
+            
+            // 显示输入对话框（只显示限制字数，仲裁请求不显示）
+            const userInputs = await showGenerateDialog(fieldName, defaultRequest, true);
+            if (!userInputs) {
+                return; // 用户取消
+            }
+            
+            const { count, request } = userInputs;
+            
+            const textarea = document.getElementById(fieldType);
+            const btnId = isApplicant ? 'btnAutoApplicant' : 'btnAutoRespondent';
+            const btn = document.getElementById(btnId);
+            
+            // 检查是否正在生成中
+            if (btn.disabled) {
+                return;
+            }
+            
+            // 设置按钮为加载状态
+            const originalBtnContent = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<div class="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full mr-1.5"></div>生成中...`;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+            
+            showToast(`正在生成${fieldName}，预计需要1分钟...`);
+            
+            console.log('[AutoGenerate] 开始调用:', { fieldType, fieldName, count: userInputs.count });
+            
+            try {
+                const result = await callAutoGenerateWorkflow(fieldType, count, request, textPart3);
+                
+                if (result.success && result.content) {
+                    // 填入结果
+                    textarea.value = result.content;
+                    // 触发输入事件以更新预览
+                    updatePreview();
+                    checkFieldStatus(textarea);
+                    showToast(`${fieldName}生成成功！`);
+                } else {
+                    throw new Error(result.message || '生成失败');
+                }
+            } catch (error) {
+                console.error('自动生成失败:', error);
+                showToast(`${fieldName}生成失败: ${error.message}`);
+            } finally {
+                // 恢复按钮状态
+                btn.disabled = false;
+                btn.innerHTML = originalBtnContent;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
+        }
+        
+        // 获取庭审笔录的part3内容
+        function getCourtRecordPart3() {
+            console.log('[AutoGenerate] cachedCaseData:', cachedCaseData ? '有数据' : '无数据');
+            
+            if (!cachedCaseData) return null;
+            
+            const writingJson = cachedCaseData.writing_json || cachedCaseData.writingJson || [];
+            console.log('[AutoGenerate] writingJson长度:', writingJson.length);
+            
+            if (!Array.isArray(writingJson) || writingJson.length === 0) {
+                return null;
+            }
+            
+            // 查找开庭笔录或庭审笔录
+            const courtRecord = writingJson.find(item => {
+                const title = item.title || '';
+                return title.includes('开庭笔录') || title.includes('庭审笔录');
+            });
+            
+            console.log('[AutoGenerate] 找到笔录:', courtRecord ? courtRecord.title : '未找到');
+            
+            if (!courtRecord) {
+                return null;
+            }
+            
+            // 从 json 字段中提取 part3
+            const jsonStr = courtRecord.json || '{}';
+            console.log('[AutoGenerate] 笔录json字段长度:', jsonStr.length);
+            
+            try {
+                const recordJson = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+                const part3 = recordJson.part3 || '';
+                console.log('[AutoGenerate] part3长度:', part3.length);
+                return part3;
+            } catch (e) {
+                console.error('解析笔录json失败:', e);
+                return null;
+            }
+        }
+        
+        // 显示生成参数输入对话框
+        // hideRequest: 是否隐藏仲裁请求输入框（默认false）
+        function showGenerateDialog(fieldName, defaultRequest, hideRequest = false) {
+            return new Promise((resolve) => {
+                // 创建对话框元素
+                const overlay = document.createElement('div');
+                overlay.id = 'generateDialogOverlay';
+                overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center';
+                overlay.style.animation = 'fadeIn 0.2s ease-out';
+                
+                const dialog = document.createElement('div');
+                dialog.className = 'bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden transform scale-100';
+                dialog.style.animation = 'fadeIn 0.3s ease-out';
+                
+                // 根据hideRequest决定是否显示仲裁请求输入框
+                const requestHtml = hideRequest ? '' : `
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                            仲裁请求 <span class="text-gray-400 text-xs">(参考生成${fieldName})</span>
+                        </label>
+                        <textarea id="dialogRequest" rows="4" 
+                                  class="input-field w-full rounded-lg px-4 py-3 text-sm border-2 border-gray-200 focus:border-green-500 focus:outline-none resize-none" 
+                                  placeholder="请输入仲裁请求内容...">${escapeHtml(defaultRequest)}</textarea>
+                    </div>
+                `;
+                
+                dialog.innerHTML = `
+                    <div class="bg-gradient-to-r from-green-500 to-emerald-500 px-6 py-4">
+                        <h3 class="text-white font-bold text-lg flex items-center">
+                            <i class="fas fa-magic mr-2"></i>自动生成${fieldName}
+                        </h3>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                                限制字数 <span class="text-gray-400 text-xs">(生成内容的最大字数)</span>
+                            </label>
+                            <input type="number" id="dialogNumb" 
+                                   class="input-field w-full rounded-lg px-4 py-2.5 text-sm border-2 border-gray-200 focus:border-green-500 focus:outline-none" 
+                                   placeholder="请输入限制字数，如 500"
+                                   min="100" max="5000" value="600">
+                        </div>
+                        ${requestHtml}
+                    </div>
+                    <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+                        <button id="dialogCancel" 
+                                class="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors text-sm font-medium">
+                            取消
+                        </button>
+                        <button id="dialogConfirm" 
+                                class="px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all text-sm font-medium shadow-md flex items-center">
+                            <i class="fas fa-play mr-2"></i>开始生成
+                        </button>
+                    </div>
+                `;
+                
+                overlay.appendChild(dialog);
+                document.body.appendChild(overlay);
+                
+                // 聚焦到输入框
+                setTimeout(() => {
+                    document.getElementById('dialogNumb').focus();
+                }, 100);
+                
+                // 处理取消
+                document.getElementById('dialogCancel').addEventListener('click', () => {
+                    overlay.remove();
+                    resolve(null);
+                });
+                
+                // 处理确认
+                document.getElementById('dialogConfirm').addEventListener('click', async () => {
+                    const count = document.getElementById('dialogNumb').value.trim();
+                    
+                    let request = '';
+                    if (hideRequest) {
+                        // 隐藏仲裁请求输入框时，按照优先级获取：数据库 > 页面 > 接口数据
+                        request = await getArbitrationRequest();
+                    } else {
+                        request = document.getElementById('dialogRequest').value.trim();
+                    }
+                    
+                    if (!count || parseInt(count) <= 0) {
+                        showToast('请输入有效的限制字数');
+                        return;
+                    }
+                    if (!request) {
+                        showToast('请输入仲裁请求内容');
+                        return;
+                    }
+                    
+                    overlay.remove();
+                    resolve({ count: parseInt(count), request });
+                });
+                
+                // 点击遮罩关闭
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.remove();
+                        resolve(null);
+                    }
+                });
+                
+                // ESC键关闭
+                const handleEsc = (e) => {
+                    if (e.key === 'Escape') {
+                        overlay.remove();
+                        resolve(null);
+                        document.removeEventListener('keydown', handleEsc);
+                    }
+                };
+                document.addEventListener('keydown', handleEsc);
+            });
+        }
+        
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 调用自动生成工作流
+        async function callAutoGenerateWorkflow(fieldType, count, request, textPart3) {
+            const isApplicant = fieldType === 'applicantClaim';
+            
+            // 调试日志
+            console.log('[AutoGenerate] 调用参数:', {
+                fieldType,
+                count,
+                requestLength: request ? request.length : 0,
+                textPart3Length: textPart3 ? textPart3.length : 0,
+                textPart3Preview: textPart3 ? textPart3.substring(0, 100) + '...' : '空'
+            });
+            
+            const response = await fetch('/api/workflow/generate-claim', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    case_id: currentCaseId,
+                    case_no: currentCaseNo,
+                    claim_type: fieldType, // 'applicantClaim' 或 'respondentClaim'
+                    count: count,
+                    request: request,
+                    textPart3: textPart3,
+                    is_applicant: isApplicant
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || '网络请求失败');
+            }
+            
+            return await response.json();
         }
 
     </script>
