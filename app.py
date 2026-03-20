@@ -3100,107 +3100,13 @@ def generate_award_draft():
         
         logger.info(f"[GenerateDraft] 生成初稿成功，内容长度={len(draft_content)}")
         
-        # 将初稿内容更新到数据库
-        try:
-            # 解析初稿内容，提取各个字段
-            # 格式可能是JSON或特定分隔符格式，这里假设是JSON格式
-            draft_data = {}
-            try:
-                draft_data = json.loads(draft_content) if isinstance(draft_content, str) else draft_content
-            except json.JSONDecodeError:
-                # 如果不是JSON，将整个内容作为"经审理查明"字段
-                draft_data = {'经审理查明': draft_content}
-            
-            # 保存到数据库
-            try:
-                # 从案号提取编号
-                bianhao_save = case_id
-                if case_no:
-                    match = re.search(r'\[(\d{4})\](\d+)', case_no)
-                    if match:
-                        year, num = match.groups()
-                        bianhao_save = f"{year}{num}"
-                
-                conn = db_manager.get_connection()
-                cursor = conn.cursor()
-                
-                # 检查是否已存在
-                cursor.execute(
-                    "SELECT id FROM `裁决书要素保存` WHERE `案号` = %s",
-                    (bianhao_save,)
-                )
-                existing = cursor.fetchone()
-                
-                applicant_claim = draft_data.get('申请人称', '')
-                respondent_claim = draft_data.get('被申请人称', '')
-                facts_found = draft_data.get('经审理查明', '')
-                committee_opinion = draft_data.get('本委认为', '')
-                final_decision = ''
-                non_final_decision = ''
-                
-                # 裁决结果可能包含终局/非终局标识
-                裁决结果 = draft_data.get('裁决结果', '')
-                if 裁决结果:
-                    if '终局' in 裁决结果 and '非' not in 裁决结果:
-                        final_decision = 裁决结果
-                    else:
-                        non_final_decision = 裁决结果
-                
-                if existing:
-                    # 更新 - 只更新非空字段
-                    cursor.execute("""
-                        UPDATE `裁决书要素保存` SET
-                            `申请人称` = %s,
-                            `被申请人称` = %s,
-                            `经审理查明` = %s,
-                            `本委认为` = %s,
-                            `终局裁决` = %s,
-                            `非终局裁决` = %s
-                        WHERE `案号` = %s
-                    """, (
-                        applicant_claim, respondent_claim,
-                        facts_found, committee_opinion, final_decision,
-                        non_final_decision, bianhao_save
-                    ))
-                    logger.info(f"[GenerateDraft] 更新数据库记录: 案号={bianhao_save}")
-                else:
-                    # 插入
-                    cursor.execute("""
-                        INSERT INTO `裁决书要素保存`
-                        (`案号`, `申请人称`, `被申请人称`, `经审理查明`,
-                         `本委认为`, `终局裁决`, `非终局裁决`)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        bianhao_save, applicant_claim, respondent_claim,
-                        facts_found, committee_opinion, final_decision,
-                        non_final_decision
-                    ))
-                    logger.info(f"[GenerateDraft] 插入数据库记录: 案号={bianhao_save}")
-                
-                conn.commit()
-                logger.info(f"[GenerateDraft] 初稿内容已保存到数据库")
-                
-            except Exception as db_save_err:
-                logger.error(f"[GenerateDraft] 保存到数据库失败: {db_save_err}")
-                import traceback
-                logger.error(traceback.format_exc())
-            finally:
-                if 'cursor' in locals():
-                    cursor.close()
-                if 'conn' in locals():
-                    conn.close()
-                
-        except Exception as db_err:
-            logger.error(f"[GenerateDraft] 保存到数据库异常: {db_err}")
-            import traceback
-            logger.error(traceback.format_exc())
-        
+        # Dify工作流已将初稿保存到数据库，后端只需返回成功状态
+        # 前端收到成功响应后刷新界面即可
         return jsonify({
             'code': 200,
-            'message': '初稿生成成功',
+            'message': '初稿生成成功，请刷新页面查看',
             'data': {
-                'draft_content': draft_content,
-                'parsed_data': draft_data if 'draft_data' in locals() else {}
+                'success': True
             },
             'timestamp': datetime.now().isoformat()
         })

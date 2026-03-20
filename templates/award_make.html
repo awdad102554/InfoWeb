@@ -858,48 +858,14 @@
                     throw new Error(result.message || '初稿生成失败');
                 }
                 
-                // 解析返回的初稿内容并填充到表单
-                const draftData = result.data.parsed_data || {};
-                const draftContent = result.data.draft_content || '';
-                
-                // 尝试解析JSON格式内容
-                if (draftData.申请人称) {
-                    document.getElementById('applicantClaim').value = draftData.申请人称;
-                }
-                if (draftData.被申请人称) {
-                    document.getElementById('respondentClaim').value = draftData.被申请人称;
-                }
-                if (draftData.经审理查明) {
-                    document.getElementById('factsFound').value = draftData.经审理查明;
-                }
-                if (draftData.本委认为) {
-                    document.getElementById('committeeOpinion').value = draftData.本委认为;
-                }
-                if (draftData.裁决结果) {
-                    // 根据裁决结果判断是终局还是非终局
-                    const isFinal = draftData.裁决结果.includes('终局') || draftData.裁决类型 === '终局';
-                    if (isFinal) {
-                        document.getElementById('finalDecision').value = draftData.裁决结果;
-                    } else {
-                        document.getElementById('nonFinalDecision').value = draftData.裁决结果;
-                    }
-                }
-                
-                // 如果解析失败，但有内容，显示提示让用户手动复制
-                if (!draftData.经审理查明 && draftContent && draftContent.length > 100) {
-                    showDraftPreviewDialog(draftContent);
-                }
-                
-                // 更新预览和字段状态
-                updatePreview();
-                // 更新各字段状态显示
-                ['applicantClaim', 'respondentClaim', 'factsFound', 'committeeOpinion', 'finalDecision', 'nonFinalDecision'].forEach(fieldId => {
-                    const el = document.getElementById(fieldId);
-                    if (el && el.value) checkFieldStatus(el);
-                });
-                
+                // Dify工作流已将初稿保存到数据库，刷新页面即可看到新内容
                 hideGeneratingStatus();
-                showToast('初稿生成成功！已自动填充到对应字段');
+                showToast('初稿生成成功！正在刷新页面...');
+                
+                // 延迟1秒后刷新页面，让用户看到提示
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
                 
             } catch (error) {
                 console.error('生成初稿失败:', error);
@@ -996,74 +962,6 @@
                     }
                 };
                 document.addEventListener('keydown', handleEsc);
-            });
-        }
-        
-        // 显示初稿预览弹窗（用于无法自动解析时）
-        function showDraftPreviewDialog(content) {
-            const overlay = document.createElement('div');
-            overlay.id = 'draftPreviewOverlay';
-            overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[300] flex items-center justify-center';
-            overlay.style.animation = 'fadeIn 0.2s ease-out';
-            
-            const dialog = document.createElement('div');
-            dialog.className = 'bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden transform scale-100 max-h-[80vh] flex flex-col';
-            dialog.style.animation = 'fadeIn 0.3s ease-out';
-            
-            dialog.innerHTML = `
-                <div class="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 flex justify-between items-center">
-                    <h3 class="text-white font-bold text-lg flex items-center">
-                        <i class="fas fa-file-alt mr-2"></i>初稿生成完成
-                    </h3>
-                    <button id="previewCloseBtn" class="text-white/80 hover:text-white transition-colors">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-                <div class="p-6 overflow-y-auto flex-1">
-                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-                        <p class="text-sm text-amber-800">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            系统无法自动识别初稿结构，请手动复制内容到对应字段。
-                        </p>
-                    </div>
-                    <textarea id="draftPreviewContent" readonly
-                              class="w-full h-96 p-4 border border-gray-300 rounded-lg font-mono text-sm bg-gray-50 resize-none">${escapeHtml(content)}</textarea>
-                </div>
-                <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
-                    <button id="previewCopyBtn" 
-                            class="px-5 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-medium shadow-md flex items-center">
-                        <i class="fas fa-copy mr-2"></i>复制内容
-                    </button>
-                    <button id="previewCloseBtn2" 
-                            class="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all text-sm font-medium">
-                        关闭
-                    </button>
-                </div>
-            `;
-            
-            overlay.appendChild(dialog);
-            document.body.appendChild(overlay);
-            
-            // 复制功能
-            document.getElementById('previewCopyBtn').addEventListener('click', () => {
-                const textarea = document.getElementById('draftPreviewContent');
-                textarea.select();
-                document.execCommand('copy');
-                showToast('内容已复制到剪贴板');
-            });
-            
-            // 关闭功能
-            const closeHandler = () => {
-                overlay.remove();
-            };
-            document.getElementById('previewCloseBtn').addEventListener('click', closeHandler);
-            document.getElementById('previewCloseBtn2').addEventListener('click', closeHandler);
-            
-            // 点击遮罩关闭
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) {
-                    overlay.remove();
-                }
             });
         }
         
