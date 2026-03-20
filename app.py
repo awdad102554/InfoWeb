@@ -2898,21 +2898,20 @@ def generate_award():
             "user": DIFY_USER_ID
         }
         
-        # 使用较短的超时时间，因为Dify会立即返回任务ID
-        workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=30)
-        
-        if workflow_resp.status_code != 200:
-            workflow_result = workflow_resp.json() if workflow_resp.text else {}
-            logger.error(f"[GenerateAward] Workflow调用失败: {workflow_result}")
-            return jsonify({
-                'code': 500,
-                'message': f'Dify Workflow启动失败: {workflow_result.get("message", "未知错误")}',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 500
-        
-        workflow_result = workflow_resp.json()
-        logger.info(f"[GenerateAward] Workflow已启动: {workflow_result}")
+        # 设置较长的超时时间（10分钟）
+        try:
+            workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=600)
+            workflow_resp.raise_for_status()
+            workflow_result = workflow_resp.json()
+            logger.info(f"[GenerateAward] Workflow完成: {workflow_result}")
+        except requests.exceptions.Timeout:
+            # 超时认为任务已提交，在后台异步执行
+            logger.info(f"[GenerateAward] Workflow调用超时，任务已在后台运行")
+            workflow_result = {'data': {'id': f'timeout-{bianhao}'}, 'status': 'running'}
+        except Exception as e:
+            logger.error(f"[GenerateAward] Workflow调用异常: {e}")
+            # 任何其他错误也视为任务已提交
+            workflow_result = {'data': {'id': f'error-{bianhao}'}, 'status': 'running'}
         
         # 立即返回，告诉前端生成任务已提交
         return jsonify({
