@@ -2833,15 +2833,73 @@ def generate_award():
         
         # Step 2: 查找庭审笔录
         writing_json = case_detail.get('writing_json', [])
-        court_record = None
         
-        for item in writing_json:
+        # 匹配条件函数
+        def is_court_record_title(item):
             title = item.get('title', '')
-            if '开庭笔录' in title or '庭审笔录' in title:
-                court_record = item
+            return '开庭笔录' in title or '庭审笔录' in title
+        
+        def is_court_record_full(item):
+            title = item.get('title', '')
+            save_path = item.get('save_path', '')
+            title_match = '开庭笔录' in title or '庭审笔录' in title
+            path_match = '开庭笔录' in save_path or '庭审笔录' in save_path
+            return title_match and path_match
+        
+        # part2: 第一个满足title条件的记录
+        court_record_for_part2 = None
+        for item in writing_json:
+            if is_court_record_title(item):
+                court_record_for_part2 = item
                 break
         
-        if not court_record:
+        # part1: 第一个同时满足title和save_path条件的记录
+        court_record_for_part1 = None
+        for item in writing_json:
+            if is_court_record_full(item):
+                court_record_for_part1 = item
+                break
+        
+        # part3: 收集所有满足title条件的记录的part3内容
+        all_records_part3 = {}
+        for idx, item in enumerate(writing_json):
+            if is_court_record_title(item):
+                title = item.get('title', f'笔录{idx+1}')
+                # 获取created_at并转换为中文日期格式
+                created_at = item.get('created_at', '')
+                date_str = ''
+                if created_at:
+                    try:
+                        # 尝试解析日期，兼容多种格式
+                        if isinstance(created_at, str):
+                            # 格式1: 2025-03-20T10:30:00+08:00 (带时区)
+                            # 格式2: 2026-03-10 09:21:06 (空格分隔)
+                            date_str_clean = created_at.split('+')[0].strip()
+                            if 'T' in date_str_clean:
+                                date_part = date_str_clean.split('T')[0]
+                            else:
+                                date_part = date_str_clean.split(' ')[0]
+                            date_obj = datetime.strptime(date_part, '%Y-%m-%d')
+                        else:
+                            date_obj = created_at
+                        date_str = f"{date_obj.year}年{date_obj.month}月{date_obj.day}日撰写"
+                    except Exception as e:
+                        logger.warning(f"日期解析失败: {created_at}, 错误: {e}")
+                        date_str = ''
+                
+                # 构建键名: {title}_20XX年X月X日撰写
+                key = f"{title}_{date_str}" if date_str else title
+                
+                json_str = item.get('json', '{}')
+                try:
+                    record_json = json.loads(json_str) if isinstance(json_str, str) else json_str
+                    part3_content = record_json.get('part3', '') or ''
+                    if part3_content:
+                        all_records_part3[key] = part3_content
+                except:
+                    pass
+        
+        if not court_record_for_part2:
             return jsonify({
                 'code': 400,
                 'message': '未找到庭审笔录，请先上传庭审笔录',
@@ -2849,16 +2907,29 @@ def generate_award():
                 'timestamp': datetime.now().isoformat()
             }), 400
         
-        # Step 3: 从 json 字段中提取 part1, part2, part3
-        json_str = court_record.get('json', '{}')
-        try:
-            record_json = json.loads(json_str) if isinstance(json_str, str) else json_str
-        except json.JSONDecodeError:
-            record_json = {}
+        # Step 3: 提取各部分内容
+        # part2: 从第一个title和save_path都匹配的记录提取（与part1条件相同）
+        text_part2 = ''
+        if court_record_for_part1:
+            json_str_p2 = court_record_for_part1.get('json', '{}')
+            try:
+                record_json_p2 = json.loads(json_str_p2) if isinstance(json_str_p2, str) else json_str_p2
+                text_part2 = record_json_p2.get('part2', '') or ''
+            except json.JSONDecodeError:
+                text_part2 = ''
         
-        text_part1 = record_json.get('part1', '') or ''
-        text_part2 = record_json.get('part2', '') or ''
-        text_part3 = record_json.get('part3', '') or ''
+        # part1: 从第一个title和save_path都匹配的记录提取
+        text_part1 = ''
+        if court_record_for_part1:
+            json_str_p1 = court_record_for_part1.get('json', '{}')
+            try:
+                record_json_p1 = json.loads(json_str_p1) if isinstance(json_str_p1, str) else json_str_p1
+                text_part1 = record_json_p1.get('part1', '') or ''
+            except json.JSONDecodeError:
+                text_part1 = ''
+        
+        # part3: 所有笔录的part3内容，封装成JSON格式
+        text_part3 = json.dumps(all_records_part3, ensure_ascii=False) if all_records_part3 else ''
         
         if not text_part1 and not text_part2 and not text_part3:
             return jsonify({
@@ -2867,6 +2938,8 @@ def generate_award():
                 'data': None,
                 'timestamp': datetime.now().isoformat()
             }), 400
+        
+        logger.info(f"[GenerateAward] 提取笔录: part1长度={len(text_part1)}, part2长度={len(text_part2)}, part3长度={len(text_part3)}")
         
         logger.info(f"[GenerateAward] 笔录内容长度: part1={len(text_part1)}, part2={len(text_part2)}, part3={len(text_part3)}")
         
