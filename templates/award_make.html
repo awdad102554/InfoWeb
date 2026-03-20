@@ -113,6 +113,10 @@
                         <i class="fas fa-save mr-2"></i>
                         保存
                     </button>
+                    <button onclick="generateDraft()" class="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:from-amber-600 hover:to-orange-600 transition-all flex items-center shadow-lg">
+                        <i class="fas fa-magic mr-2"></i>
+                        一键生成初稿
+                    </button>
                     <button onclick="generateWord()" class="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:from-purple-700 hover:to-blue-700 transition-all flex items-center shadow-lg">
                         <i class="fas fa-file-word mr-2"></i>
                         生成Word
@@ -797,6 +801,270 @@
             if (statusDiv) {
                 statusDiv.classList.add('hidden');
             }
+        }
+        
+        // 一键生成初稿
+        async function generateDraft() {
+            // 获取numb参数（参考生成word的numb参数）
+            let numb = currentCaseId;
+            if (currentCaseNo) {
+                const match = currentCaseNo.match(/\[(\d{4})\](\d+)/);
+                if (match) {
+                    const year = match[1];
+                    const num = match[2];
+                    numb = `${year}${num}`;
+                }
+            }
+            
+            // 获取textPart3
+            const textPart3 = getCourtRecordPart3();
+            if (!textPart3) {
+                showToast('未找到庭审笔录，无法生成初稿');
+                return;
+            }
+            
+            // 获取仲裁请求
+            const requestContent = await getArbitrationRequest();
+            if (!requestContent || !requestContent.trim()) {
+                showToast('请先填写或获取仲裁请求内容');
+                return;
+            }
+            
+            // 显示弹窗获取用户建议
+            const material = await showDraftDialog();
+            if (material === null) {
+                return; // 用户取消
+            }
+            
+            showGeneratingStatus('初稿生成任务已提交，预计需要3分钟左右...');
+            
+            try {
+                const response = await fetch('/api/award/generate-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        case_id: currentCaseId,
+                        case_no: currentCaseNo,
+                        numb: numb,
+                        request: requestContent,
+                        material: material,
+                        textPart3: textPart3
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok || result.code !== 200) {
+                    throw new Error(result.message || '初稿生成失败');
+                }
+                
+                // 解析返回的初稿内容并填充到表单
+                const draftData = result.data.parsed_data || {};
+                const draftContent = result.data.draft_content || '';
+                
+                // 尝试解析JSON格式内容
+                if (draftData.申请人称) {
+                    document.getElementById('applicantClaim').value = draftData.申请人称;
+                }
+                if (draftData.被申请人称) {
+                    document.getElementById('respondentClaim').value = draftData.被申请人称;
+                }
+                if (draftData.经审理查明) {
+                    document.getElementById('factsFound').value = draftData.经审理查明;
+                }
+                if (draftData.本委认为) {
+                    document.getElementById('committeeOpinion').value = draftData.本委认为;
+                }
+                if (draftData.裁决结果) {
+                    // 根据裁决结果判断是终局还是非终局
+                    const isFinal = draftData.裁决结果.includes('终局') || draftData.裁决类型 === '终局';
+                    if (isFinal) {
+                        document.getElementById('finalDecision').value = draftData.裁决结果;
+                    } else {
+                        document.getElementById('nonFinalDecision').value = draftData.裁决结果;
+                    }
+                }
+                
+                // 如果解析失败，但有内容，显示提示让用户手动复制
+                if (!draftData.经审理查明 && draftContent && draftContent.length > 100) {
+                    showDraftPreviewDialog(draftContent);
+                }
+                
+                // 更新预览和字段状态
+                updatePreview();
+                // 更新各字段状态显示
+                ['applicantClaim', 'respondentClaim', 'factsFound', 'committeeOpinion', 'finalDecision', 'nonFinalDecision'].forEach(fieldId => {
+                    const el = document.getElementById(fieldId);
+                    if (el && el.value) checkFieldStatus(el);
+                });
+                
+                hideGeneratingStatus();
+                showToast('初稿生成成功！已自动填充到对应字段');
+                
+            } catch (error) {
+                console.error('生成初稿失败:', error);
+                showToast('生成初稿失败: ' + error.message);
+                hideGeneratingStatus();
+            }
+        }
+        
+        // 显示生成初稿的输入弹窗
+        function showDraftDialog() {
+            return new Promise((resolve) => {
+                // 创建对话框元素
+                const overlay = document.createElement('div');
+                overlay.id = 'draftDialogOverlay';
+                overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center';
+                overlay.style.animation = 'fadeIn 0.2s ease-out';
+                
+                const dialog = document.createElement('div');
+                dialog.className = 'bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden transform scale-100';
+                dialog.style.animation = 'fadeIn 0.3s ease-out';
+                
+                dialog.innerHTML = `
+                    <div class="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4">
+                        <h3 class="text-white font-bold text-lg flex items-center">
+                            <i class="fas fa-magic mr-2"></i>一键生成裁决书初稿
+                        </h3>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <p class="text-sm text-blue-800">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                系统将基于庭审笔录和仲裁请求自动生成裁决书初稿，包括申请人称、被申请人称、经审理查明、本委认为等部分。
+                            </p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                                补充建议 <span class="text-gray-400 text-xs">(可选，输入特殊要求或注意事项)</span>
+                            </label>
+                            <textarea id="draftMaterial" rows="4" 
+                                      class="input-field w-full rounded-lg px-4 py-3 text-sm border-2 border-gray-200 focus:border-amber-500 focus:outline-none resize-none" 
+                                      placeholder="例如：重点强调某一点、需要特别说明的内容、格式要求等..."></textarea>
+                        </div>
+                        <div class="text-xs text-gray-500">
+                            <i class="fas fa-clock mr-1"></i>预计生成时间约3分钟，请耐心等待
+                        </div>
+                    </div>
+                    <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+                        <button id="draftDialogCancel" 
+                                class="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors text-sm font-medium">
+                            取消
+                        </button>
+                        <button id="draftDialogConfirm" 
+                                class="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all text-sm font-medium shadow-md flex items-center">
+                            <i class="fas fa-play mr-2"></i>开始生成
+                        </button>
+                    </div>
+                `;
+                
+                overlay.appendChild(dialog);
+                document.body.appendChild(overlay);
+                
+                // 聚焦到输入框
+                setTimeout(() => {
+                    document.getElementById('draftMaterial').focus();
+                }, 100);
+                
+                // 处理取消
+                document.getElementById('draftDialogCancel').addEventListener('click', () => {
+                    overlay.remove();
+                    resolve(null);
+                });
+                
+                // 处理确认
+                document.getElementById('draftDialogConfirm').addEventListener('click', () => {
+                    const material = document.getElementById('draftMaterial').value.trim();
+                    overlay.remove();
+                    resolve(material);
+                });
+                
+                // 点击遮罩关闭
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.remove();
+                        resolve(null);
+                    }
+                });
+                
+                // ESC键关闭
+                const handleEsc = (e) => {
+                    if (e.key === 'Escape') {
+                        overlay.remove();
+                        resolve(null);
+                        document.removeEventListener('keydown', handleEsc);
+                    }
+                };
+                document.addEventListener('keydown', handleEsc);
+            });
+        }
+        
+        // 显示初稿预览弹窗（用于无法自动解析时）
+        function showDraftPreviewDialog(content) {
+            const overlay = document.createElement('div');
+            overlay.id = 'draftPreviewOverlay';
+            overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[300] flex items-center justify-center';
+            overlay.style.animation = 'fadeIn 0.2s ease-out';
+            
+            const dialog = document.createElement('div');
+            dialog.className = 'bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden transform scale-100 max-h-[80vh] flex flex-col';
+            dialog.style.animation = 'fadeIn 0.3s ease-out';
+            
+            dialog.innerHTML = `
+                <div class="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 flex justify-between items-center">
+                    <h3 class="text-white font-bold text-lg flex items-center">
+                        <i class="fas fa-file-alt mr-2"></i>初稿生成完成
+                    </h3>
+                    <button id="previewCloseBtn" class="text-white/80 hover:text-white transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6 overflow-y-auto flex-1">
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                        <p class="text-sm text-amber-800">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            系统无法自动识别初稿结构，请手动复制内容到对应字段。
+                        </p>
+                    </div>
+                    <textarea id="draftPreviewContent" readonly
+                              class="w-full h-96 p-4 border border-gray-300 rounded-lg font-mono text-sm bg-gray-50 resize-none">${escapeHtml(content)}</textarea>
+                </div>
+                <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+                    <button id="previewCopyBtn" 
+                            class="px-5 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-medium shadow-md flex items-center">
+                        <i class="fas fa-copy mr-2"></i>复制内容
+                    </button>
+                    <button id="previewCloseBtn2" 
+                            class="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all text-sm font-medium">
+                        关闭
+                    </button>
+                </div>
+            `;
+            
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+            
+            // 复制功能
+            document.getElementById('previewCopyBtn').addEventListener('click', () => {
+                const textarea = document.getElementById('draftPreviewContent');
+                textarea.select();
+                document.execCommand('copy');
+                showToast('内容已复制到剪贴板');
+            });
+            
+            // 关闭功能
+            const closeHandler = () => {
+                overlay.remove();
+            };
+            document.getElementById('previewCloseBtn').addEventListener('click', closeHandler);
+            document.getElementById('previewCloseBtn2').addEventListener('click', closeHandler);
+            
+            // 点击遮罩关闭
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.remove();
+                }
+            });
         }
         
         // 开始轮询查询状态

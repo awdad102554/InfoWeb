@@ -3010,6 +3010,221 @@ def generate_award():
         }), 500
 
 
+@app.route('/api/award/generate-draft', methods=['POST'])
+def generate_award_draft():
+    """
+    一键生成裁决书初稿
+    调用Dify Workflow生成初稿内容，并将结果更新到数据库
+    Workflow key: app-OsDtggydgMq4R4NsqH111gBb
+    参数: numb, request, material, textPart3
+    调用需要约3分钟
+    """
+    try:
+        data = request.get_json() or {}
+        
+        case_id = data.get('case_id', '')
+        case_no = data.get('case_no', '')
+        numb = data.get('numb', '')  # 参考生成word的numb参数
+        request_content = data.get('request', '')  # 仲裁请求
+        material = data.get('material', '')  # 用户输入的建议
+        text_part3 = data.get('textPart3', '')  # 庭审笔录part3内容
+        
+        if not case_id:
+            return jsonify({
+                'code': 400,
+                'message': '缺少案件ID',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # Dify 配置
+        DIFY_API_KEY = "app-OsDtggydgMq4R4NsqH111gBb"
+        DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
+        DIFY_USER_ID = f"user-{case_id}-draft" if case_id else "user-draft"
+        
+        logger.info(f"[GenerateDraft] 接收到请求: case_id={case_id}, case_no={case_no}, numb={numb}")
+        logger.info(f"[GenerateDraft] 参数: request长度={len(request_content)}, material={material[:50] if material else '空'}..., textPart3长度={len(text_part3)}")
+        
+        # 调用 Dify Workflow（阻塞模式，等待约3分钟）
+        workflow_url = f"{DIFY_BASE_URL}/workflows/run"
+        workflow_headers = {
+            "Authorization": f"Bearer {DIFY_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "inputs": {
+                "numb": numb,
+                "request": request_content,
+                "material": material,
+                "textPart3": text_part3
+            },
+            "response_mode": "blocking",
+            "user": DIFY_USER_ID
+        }
+        
+        # 设置较长的超时时间（5分钟）
+        workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=300)
+        
+        if workflow_resp.status_code != 200:
+            workflow_result = workflow_resp.json() if workflow_resp.text else {}
+            logger.error(f"[GenerateDraft] Workflow调用失败: {workflow_resp.status_code}, {workflow_result}")
+            return jsonify({
+                'code': 500,
+                'message': f'Workflow调用失败: {workflow_result.get("message", "未知错误")}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        workflow_result = workflow_resp.json()
+        logger.info(f"[GenerateDraft] Workflow返回: {workflow_result}")
+        
+        # 提取生成的初稿内容
+        draft_content = workflow_result.get('data', {}).get('outputs', {}).get('result', '')
+        if not draft_content:
+            # 尝试其他可能的字段名
+            outputs = workflow_result.get('data', {}).get('outputs', {})
+            for key in ['result', 'content', 'output', 'text', 'draft']:
+                if key in outputs and outputs[key]:
+                    draft_content = outputs[key]
+                    break
+        
+        if not draft_content:
+            logger.warning(f"[GenerateDraft] Workflow返回内容为空，outputs={workflow_result.get('data', {}).get('outputs', {})}")
+            return jsonify({
+                'code': 500,
+                'message': '生成初稿内容为空',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        logger.info(f"[GenerateDraft] 生成初稿成功，内容长度={len(draft_content)}")
+        
+        # 将初稿内容更新到数据库
+        try:
+            # 解析初稿内容，提取各个字段
+            # 格式可能是JSON或特定分隔符格式，这里假设是JSON格式
+            draft_data = {}
+            try:
+                draft_data = json.loads(draft_content) if isinstance(draft_content, str) else draft_content
+            except json.JSONDecodeError:
+                # 如果不是JSON，将整个内容作为"经审理查明"字段
+                draft_data = {'经审理查明': draft_content}
+            
+            # 保存到数据库
+            try:
+                # 从案号提取编号
+                bianhao_save = case_id
+                if case_no:
+                    match = re.search(r'\[(\d{4})\](\d+)', case_no)
+                    if match:
+                        year, num = match.groups()
+                        bianhao_save = f"{year}{num}"
+                
+                conn = db_manager.get_connection()
+                cursor = conn.cursor()
+                
+                # 检查是否已存在
+                cursor.execute(
+                    "SELECT id FROM `裁决书要素保存` WHERE `案号` = %s",
+                    (bianhao_save,)
+                )
+                existing = cursor.fetchone()
+                
+                applicant_claim = draft_data.get('申请人称', '')
+                respondent_claim = draft_data.get('被申请人称', '')
+                facts_found = draft_data.get('经审理查明', '')
+                committee_opinion = draft_data.get('本委认为', '')
+                final_decision = ''
+                non_final_decision = ''
+                
+                # 裁决结果可能包含终局/非终局标识
+                裁决结果 = draft_data.get('裁决结果', '')
+                if 裁决结果:
+                    if '终局' in 裁决结果 and '非' not in 裁决结果:
+                        final_decision = 裁决结果
+                    else:
+                        non_final_decision = 裁决结果
+                
+                if existing:
+                    # 更新 - 只更新非空字段
+                    cursor.execute("""
+                        UPDATE `裁决书要素保存` SET
+                            `申请人称` = %s,
+                            `被申请人称` = %s,
+                            `经审理查明` = %s,
+                            `本委认为` = %s,
+                            `终局裁决` = %s,
+                            `非终局裁决` = %s
+                        WHERE `案号` = %s
+                    """, (
+                        applicant_claim, respondent_claim,
+                        facts_found, committee_opinion, final_decision,
+                        non_final_decision, bianhao_save
+                    ))
+                    logger.info(f"[GenerateDraft] 更新数据库记录: 案号={bianhao_save}")
+                else:
+                    # 插入
+                    cursor.execute("""
+                        INSERT INTO `裁决书要素保存`
+                        (`案号`, `申请人称`, `被申请人称`, `经审理查明`,
+                         `本委认为`, `终局裁决`, `非终局裁决`)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        bianhao_save, applicant_claim, respondent_claim,
+                        facts_found, committee_opinion, final_decision,
+                        non_final_decision
+                    ))
+                    logger.info(f"[GenerateDraft] 插入数据库记录: 案号={bianhao_save}")
+                
+                conn.commit()
+                logger.info(f"[GenerateDraft] 初稿内容已保存到数据库")
+                
+            except Exception as db_save_err:
+                logger.error(f"[GenerateDraft] 保存到数据库失败: {db_save_err}")
+                import traceback
+                logger.error(traceback.format_exc())
+            finally:
+                if 'cursor' in locals():
+                    cursor.close()
+                if 'conn' in locals():
+                    conn.close()
+                
+        except Exception as db_err:
+            logger.error(f"[GenerateDraft] 保存到数据库异常: {db_err}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        return jsonify({
+            'code': 200,
+            'message': '初稿生成成功',
+            'data': {
+                'draft_content': draft_content,
+                'parsed_data': draft_data if 'draft_data' in locals() else {}
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except requests.exceptions.Timeout:
+        logger.error(f"[GenerateDraft] Workflow调用超时")
+        return jsonify({
+            'code': 504,
+            'message': '生成初稿超时，请稍后重试',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except Exception as e:
+        logger.error(f"[GenerateDraft] 生成初稿失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'code': 500,
+            'message': f'生成初稿失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
 @app.route('/api/workflow/generate-claim', methods=['POST'])
 def generate_claim_workflow():
     """
