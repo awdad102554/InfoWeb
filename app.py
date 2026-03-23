@@ -2777,344 +2777,200 @@ def award_elements(case_id):
 
 @app.route('/api/award/generate', methods=['POST'])
 def generate_award():
-    """
-    生成裁决书Word文档
-    调用Dify Workflow生成Word文档，传入庭审笔录的part1/part2/part3
-    Workflow 异步执行，前端通过轮询查询生成状态
-    """
+    """生成裁决书Word文档 - 直接调用Dify等待结果"""
     try:
         data = request.get_json() or {}
-        
         case_id = data.get('case_id', '')
         case_no = data.get('case_no', '')
         
-        # Dify 配置
-        DIFY_API_KEY = "app-eEMlvxJweUDbvuOaJrUyaCeo"
-        DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
-        DIFY_USER_ID = f"user-{case_id}" if case_id else "user-award"
-        
-        # Step 1: 获取案件详情，查找庭审笔录
-        logger.info(f"[GenerateAward] 查找庭审笔录, case_id={case_id}")
-        
+        # 获取庭审笔录
         if not login_manager.check_and_renew_login():
-            return jsonify({
-                'code': 401,
-                'message': '登录失败，无法获取案件信息',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 401
+            return jsonify({'code': 401, 'message': '登录失败'}), 401
         
         headers = login_manager.get_auth_headers()
-        detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
-        
         response = requests.post(
-            detail_url,
+            "http://10.96.10.78:8080/v1/api/admin/case/caseData",
             headers=headers,
             json={'id': case_id},
             timeout=30
         )
         
         if response.status_code != 200:
-            return jsonify({
-                'code': 500,
-                'message': '获取案件详情失败',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 500
+            return jsonify({'code': 500, 'message': '获取案件详情失败'}), 500
         
         case_data = response.json()
         data_content = case_data.get('data', {})
-        if isinstance(data_content, dict):
-            case_detail = data_content
-        elif isinstance(data_content, list) and len(data_content) > 0:
-            case_detail = data_content[0] if isinstance(data_content[0], dict) else {}
+        if isinstance(data_content, list) and len(data_content) > 0:
+            case_detail = data_content[0]
         else:
-            case_detail = {}
+            case_detail = data_content
         
-        # Step 2: 查找庭审笔录
         writing_json = case_detail.get('writing_json', [])
         
-        # 匹配条件函数
-        def is_court_record_title(item):
-            title = item.get('title', '')
-            return '开庭笔录' in title or '庭审笔录' in title
+        # 提取笔录内容
+        text_part1 = ''
+        text_part2 = ''
+        all_records_part3 = {}
         
-        def is_court_record_full(item):
+        for item in writing_json:
             title = item.get('title', '')
             save_path = item.get('save_path', '')
-            title_match = '开庭笔录' in title or '庭审笔录' in title
-            path_match = '开庭笔录' in save_path or '庭审笔录' in save_path
-            return title_match and path_match
-        
-        # part2: 第一个满足title条件的记录
-        court_record_for_part2 = None
-        for item in writing_json:
-            if is_court_record_title(item):
-                court_record_for_part2 = item
-                break
-        
-        # part1: 第一个同时满足title和save_path条件的记录
-        court_record_for_part1 = None
-        for item in writing_json:
-            if is_court_record_full(item):
-                court_record_for_part1 = item
-                break
-        
-        # part3: 收集所有满足title条件的记录的part3内容
-        all_records_part3 = {}
-        for idx, item in enumerate(writing_json):
-            if is_court_record_title(item):
-                title = item.get('title', f'笔录{idx+1}')
-                # 获取created_at并转换为中文日期格式
-                created_at = item.get('created_at', '')
-                date_str = ''
-                if created_at:
-                    try:
-                        # 尝试解析日期，兼容多种格式
-                        if isinstance(created_at, str):
-                            # 格式1: 2025-03-20T10:30:00+08:00 (带时区)
-                            # 格式2: 2026-03-10 09:21:06 (空格分隔)
-                            date_str_clean = created_at.split('+')[0].strip()
-                            if 'T' in date_str_clean:
-                                date_part = date_str_clean.split('T')[0]
-                            else:
-                                date_part = date_str_clean.split(' ')[0]
-                            date_obj = datetime.strptime(date_part, '%Y-%m-%d')
-                        else:
-                            date_obj = created_at
-                        date_str = f"{date_obj.year}年{date_obj.month}月{date_obj.day}日撰写"
-                    except Exception as e:
-                        logger.warning(f"日期解析失败: {created_at}, 错误: {e}")
-                        date_str = ''
-                
-                # 构建键名: {title}_20XX年X月X日撰写
-                key = f"{title}_{date_str}" if date_str else title
-                
+            if '开庭笔录' in title or '庭审笔录' in title:
                 json_str = item.get('json', '{}')
                 try:
                     record_json = json.loads(json_str) if isinstance(json_str, str) else json_str
+                    # part1和part2从同时满足title和save_path的记录提取
+                    if '开庭笔录' in save_path or '庭审笔录' in save_path:
+                        if not text_part1:
+                            text_part1 = record_json.get('part1', '') or ''
+                        if not text_part2:
+                            text_part2 = record_json.get('part2', '') or ''
+                    # part3收集所有
                     part3_content = record_json.get('part3', '') or ''
                     if part3_content:
-                        all_records_part3[key] = part3_content
+                        all_records_part3[title] = part3_content
                 except:
                     pass
         
-        if not court_record_for_part2:
-            return jsonify({
-                'code': 400,
-                'message': '未找到庭审笔录，请先上传庭审笔录',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 400
-        
-        # Step 3: 提取各部分内容
-        # part2: 从第一个title和save_path都匹配的记录提取（与part1条件相同）
-        text_part2 = ''
-        if court_record_for_part1:
-            json_str_p2 = court_record_for_part1.get('json', '{}')
-            try:
-                record_json_p2 = json.loads(json_str_p2) if isinstance(json_str_p2, str) else json_str_p2
-                text_part2 = record_json_p2.get('part2', '') or ''
-            except json.JSONDecodeError:
-                text_part2 = ''
-        
-        # part1: 从第一个title和save_path都匹配的记录提取
-        text_part1 = ''
-        if court_record_for_part1:
-            json_str_p1 = court_record_for_part1.get('json', '{}')
-            try:
-                record_json_p1 = json.loads(json_str_p1) if isinstance(json_str_p1, str) else json_str_p1
-                text_part1 = record_json_p1.get('part1', '') or ''
-            except json.JSONDecodeError:
-                text_part1 = ''
-        
-        # part3: 所有笔录的part3内容，封装成JSON格式
         text_part3 = json.dumps(all_records_part3, ensure_ascii=False) if all_records_part3 else ''
         
         if not text_part1 and not text_part2 and not text_part3:
-            return jsonify({
-                'code': 400,
-                'message': '庭审笔录内容为空（part1/part2/part3均为空）',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 400
+            return jsonify({'code': 400, 'message': '未找到庭审笔录内容'}), 400
         
-        logger.info(f"[GenerateAward] 提取笔录: part1长度={len(text_part1)}, part2长度={len(text_part2)}, part3长度={len(text_part3)}")
-        
-        logger.info(f"[GenerateAward] 笔录内容长度: part1={len(text_part1)}, part2={len(text_part2)}, part3={len(text_part3)}")
-        
-        # Step 4: 提取案号中的编号 (如 "明永劳人仲案字[2025]97号" -> "202597")
+        # 提取案号编号
         bianhao = case_id
         if case_no:
             match = re.search(r'\[(\d{4})\](\d+)', case_no)
             if match:
-                year, num = match.groups()
-                bianhao = f"{year}{num}"
+                bianhao = f"{match.group(1)}{match.group(2)}"
         
-        logger.info(f"[GenerateAward] 调用Workflow, numb={bianhao}")
+        # 调用Dify
+        DIFY_API_KEY = "app-eEMlvxJweUDbvuOaJrUyaCeo"
+        DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
         
-        # Step 5: 后台线程异步调用 Dify Workflow
-        import threading
-        
-        def call_dify_workflow():
-            """在后台线程中调用Dify Workflow"""
-            try:
-                workflow_url = f"{DIFY_BASE_URL}/workflows/run"
-                workflow_headers = {
-                    "Authorization": f"Bearer {DIFY_API_KEY}",
-                    "Content-Type": "application/json"
-                }
-                
-                payload = {
-                    "inputs": {
-                        "numb": bianhao,
-                        "textPart1": text_part1,
-                        "textPart2": text_part2,
-                        "textPart3": text_part3
-                    },
-                    "response_mode": "blocking",
-                    "user": DIFY_USER_ID
-                }
-                
-                logger.info(f"[GenerateAward] 后台线程开始调用Workflow，预计8-10分钟完成")
-                workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=600)
-                
-                if workflow_resp.status_code == 200:
-                    logger.info(f"[GenerateAward] Workflow调用成功")
-                else:
-                    logger.error(f"[GenerateAward] Workflow调用失败: {workflow_resp.status_code}")
-            except Exception as e:
-                logger.error(f"[GenerateAward] 后台Workflow调用异常: {str(e)}")
-        
-        # 启动后台线程
-        thread = threading.Thread(target=call_dify_workflow)
-        thread.daemon = True
-        thread.start()
-        
-        logger.info(f"[GenerateAward] 已启动后台线程，立即返回")
-        
-        # 立即返回，不等待结果
-        return jsonify({
-            'code': 200,
-            'message': '裁决书生成任务已提交，预计8-10分钟后完成',
-            'data': {
-                'bianhao': bianhao,
-                'workflow_id': f'draft-{bianhao}',
-                'status': 'generating',
-                'estimated_time': '8-10分钟'
+        payload = {
+            "inputs": {
+                "numb": bianhao,
+                "textPart1": text_part1,
+                "textPart2": text_part2,
+                "textPart3": text_part3
             },
-            'timestamp': datetime.now().isoformat()
-        })
+            "response_mode": "blocking",
+            "user": f"user-{case_id}"
+        }
         
+        resp = requests.post(
+            f"{DIFY_BASE_URL}/workflows/run",
+            headers={"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=600
+        )
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            return jsonify({
+                'code': 200,
+                'message': '裁决书生成成功',
+                'data': {'task_id': result.get('task_id', 'N/A')}
+            })
+        else:
+            return jsonify({'code': 500, 'message': f'Dify错误: {resp.status_code}'}), 500
+            
     except Exception as e:
-        logger.error(f"生成裁决书失败: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'code': 500,
-            'message': f'生成失败: {str(e)}',
-            'data': None,
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            import traceback
+            f.write(f"异常: {str(e)}\n")
+            f.write(f"堆栈: {traceback.format_exc()}\n")
+        return jsonify({'code': 500, 'message': str(e)}), 500
 
 
 @app.route('/api/award/generate-draft', methods=['POST'])
 def generate_award_draft():
-    """
-    一键生成裁决书初稿
-    调用Dify Workflow生成初稿内容，并将结果更新到数据库
-    Workflow key: app-OsDtggydgMq4R4NsqH111gBb
-    参数: numb, request, material, textPart3
-    调用需要约3-5分钟，后台异步执行
-    """
+    """一键生成裁决书初稿 - 直接调用Dify等待结果"""
+    # 第一行就记录，确保能捕获到请求
+    import os
+    with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+        f.write(f"\n[{datetime.now()}] ========== 新请求 ==========\n")
+        f.write(f"远程地址: {request.remote_addr}\n")
+        f.write(f"请求方法: {request.method}\n")
+        f.write(f"Content-Type: {request.content_type}\n")
+    
     try:
         data = request.get_json() or {}
         
+        # 记录接收到的原始数据
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            import json
+            f.write(f"原始数据: {json.dumps(data, ensure_ascii=False)}\n")
+        
         case_id = data.get('case_id', '')
-        case_no = data.get('case_no', '')
         numb = data.get('numb', '')
         request_content = data.get('request', '')
         material = data.get('material', '')
         text_part3 = data.get('textPart3', '')
+        slsj = data.get('slsj', '')
+        
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            f.write(f"解析后: case_id={case_id}, numb={numb}, slsj={slsj}\n")
+            f.write(f"request长度: {len(request_content) if request_content else 0}\n")
+            f.write(f"material: {material[:50] if material else '空'}\n")
+            f.write(f"textPart3长度: {len(text_part3) if text_part3 else 0}\n")
         
         if not case_id:
-            return jsonify({
-                'code': 400,
-                'message': '缺少案件ID',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 400
+            return jsonify({'code': 400, 'message': '缺少案件ID'}), 400
         
-        # Dify 配置
+        # 调用Dify
         DIFY_API_KEY = "app-OsDtggydgMq4R4NsqH111gBb"
         DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
-        DIFY_USER_ID = f"user-{case_id}-draft" if case_id else "user-draft"
         
-        logger.info(f"[GenerateDraft] 接收到请求: case_id={case_id}, case_no={case_no}, numb={numb}")
-        logger.info(f"[GenerateDraft] 参数: request长度={len(request_content)}, material={material[:50] if material else '空'}..., textPart3长度={len(text_part3)}")
-        
-        # 后台线程异步调用 Dify Workflow
-        import threading
-        
-        def call_dify_workflow():
-            """在后台线程中调用Dify Workflow"""
-            try:
-                workflow_url = f"{DIFY_BASE_URL}/workflows/run"
-                workflow_headers = {
-                    "Authorization": f"Bearer {DIFY_API_KEY}",
-                    "Content-Type": "application/json"
-                }
-                
-                payload = {
-                    "inputs": {
-                        "numb": numb,
-                        "request": request_content,
-                        "material": material,
-                        "textPart3": text_part3
-                    },
-                    "response_mode": "blocking",
-                    "user": DIFY_USER_ID
-                }
-                
-                logger.info(f"[GenerateDraft] 后台线程开始调用Workflow，预计3-5分钟完成")
-                workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=300)
-                
-                if workflow_resp.status_code == 200:
-                    logger.info(f"[GenerateDraft] Workflow调用成功")
-                else:
-                    logger.error(f"[GenerateDraft] Workflow调用失败: {workflow_resp.status_code}")
-            except Exception as e:
-                logger.error(f"[GenerateDraft] 后台Workflow调用异常: {str(e)}")
-        
-        # 启动后台线程
-        thread = threading.Thread(target=call_dify_workflow)
-        thread.daemon = True
-        thread.start()
-        
-        logger.info(f"[GenerateDraft] 已启动后台线程，立即返回")
-        
-        # 立即返回，不等待结果
-        return jsonify({
-            'code': 200,
-            'message': '初稿生成任务已提交，预计3-5分钟后完成',
-            'data': {
-                'success': True,
-                'case_id': case_id,
-                'estimated_time': '3-5分钟'
+        payload = {
+            "inputs": {
+                "numb": numb,
+                "request": request_content,
+                "material": material,
+                "textPart3": text_part3,
+                "slsj": slsj
             },
-            'timestamp': datetime.now().isoformat()
-        })
+            "response_mode": "blocking",
+            "user": f"user-{case_id}-draft"
+        }
         
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            import json
+            f.write(f"准备调用Dify，payload: {json.dumps(payload, ensure_ascii=False)}\n")
+        
+        resp = requests.post(
+            f"{DIFY_BASE_URL}/workflows/run",
+            headers={"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=300
+        )
+        
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            f.write(f"Dify返回状态码: {resp.status_code}\n")
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            task_id = result.get('task_id', 'N/A')
+            with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+                f.write(f"调用成功，task_id: {task_id}\n")
+            return jsonify({
+                'code': 200,
+                'message': '✅ 初稿生成成功！',
+                'data': {'task_id': task_id, 'case_id': case_id}
+            })
+        else:
+            error_text = resp.text[:200]
+            with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+                f.write(f"调用失败: {resp.status_code}, {error_text}\n")
+            return jsonify({'code': 500, 'message': f'Dify错误: {resp.status_code}'}), 500
+            
     except Exception as e:
-        logger.error(f"[GenerateDraft] 生成初稿失败: {str(e)}")
         import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'code': 500,
-            'message': f'生成初稿失败: {str(e)}',
-            'data': None,
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            f.write(f"异常: {str(e)}\n")
+            f.write(f"堆栈: {traceback.format_exc()}\n")
+        return jsonify({'code': 500, 'message': str(e)}), 500
 
 
 @app.route('/api/workflow/generate-claim', methods=['POST'])

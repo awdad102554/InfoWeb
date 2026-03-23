@@ -455,12 +455,6 @@
         let currentCaseNo = '';
         let caseData = null;
         
-        // 页面保活检测相关变量
-        let isUserOnPage = true;  // 用户是否在当前页面
-        let draftRefreshTimer = null;  // 一键生成初稿的刷新定时器
-        let wordRefreshTimer = null;   // 生成Word的刷新定时器
-        let lastRequestType = null;    // 最后一次请求的类型：'draft' 或 'word'
-
         // 字段映射
         const FIELD_MAP = {
             'arbitrationRequest': '仲裁请求',
@@ -488,81 +482,6 @@
                 checkExistingFiles();
             });
         };
-        
-        // 页面可见性变化监听（判断用户是否还在当前页面）
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden') {
-                // 用户离开页面
-                isUserOnPage = false;
-                console.log('[PageVisibility] 用户离开页面');
-            } else if (document.visibilityState === 'visible') {
-                // 用户回到页面
-                isUserOnPage = true;
-                console.log('[PageVisibility] 用户回到页面');
-            }
-        });
-        
-        // 页面卸载时清理定时器
-        window.addEventListener('beforeunload', function() {
-            if (draftRefreshTimer) {
-                clearTimeout(draftRefreshTimer);
-                draftRefreshTimer = null;
-            }
-            if (wordRefreshTimer) {
-                clearTimeout(wordRefreshTimer);
-                wordRefreshTimer = null;
-            }
-        });
-        
-        // 设置自动刷新定时器
-        function setAutoRefresh(type) {
-            // 清除之前的定时器
-            if (draftRefreshTimer) {
-                clearTimeout(draftRefreshTimer);
-                draftRefreshTimer = null;
-            }
-            if (wordRefreshTimer) {
-                clearTimeout(wordRefreshTimer);
-                wordRefreshTimer = null;
-            }
-            
-            lastRequestType = type;
-            
-            if (type === 'draft') {
-                // 一键生成初稿：5分钟后自动刷新（如果用户还在页面）
-                console.log('[AutoRefresh] 设置一键生成初稿5分钟后自动刷新');
-                showToast('初稿生成任务已提交，5分钟后将自动刷新页面', 5000);
-                
-                draftRefreshTimer = setTimeout(function() {
-                    if (isUserOnPage && lastRequestType === 'draft') {
-                        console.log('[AutoRefresh] 5分钟到达，用户仍在页面，自动刷新');
-                        showToast('初稿生成完成，正在刷新页面...', 3000);
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1500);
-                    } else {
-                        console.log('[AutoRefresh] 5分钟到达，用户已离开页面或请求类型不匹配，不自动刷新');
-                    }
-                }, 5 * 60 * 1000); // 5分钟 = 300000毫秒
-                
-            } else if (type === 'word') {
-                // 生成Word：8分钟后自动刷新（如果用户还在页面）
-                console.log('[AutoRefresh] 设置生成Word 8分钟后自动刷新');
-                showToast('Word生成任务已提交，8分钟后将自动刷新页面', 5000);
-                
-                wordRefreshTimer = setTimeout(function() {
-                    if (isUserOnPage && lastRequestType === 'word') {
-                        console.log('[AutoRefresh] 8分钟到达，用户仍在页面，自动刷新');
-                        showToast('Word生成完成，正在刷新页面...', 3000);
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1500);
-                    } else {
-                        console.log('[AutoRefresh] 8分钟到达，用户已离开页面或请求类型不匹配，不自动刷新');
-                    }
-                }, 8 * 60 * 1000); // 8分钟 = 480000毫秒
-            }
-        }
 
         // 加载数据
         async function loadData() {
@@ -911,9 +830,9 @@
                     throw new Error(result.message || '生成任务提交失败');
                 }
                 
-                // 任务已提交，设置8分钟后自动刷新（如果用户还在页面）
+                // 任务完成
                 hideGeneratingStatus();
-                setAutoRefresh('word');
+                showToast('Word生成成功', 3000);
                 
             } catch (error) {
                 console.error('生成失败:', error);
@@ -980,20 +899,43 @@
                 return; // 用户取消
             }
             
-            showGeneratingStatus('初稿生成任务已提交，预计需要3-5分钟...');
+            showGeneratingStatus('正在生成初稿，请稍候...');
+            
+            // 获取受理时间并转换为紧凑格式（8位数字）
+            const acceptTimeInput = document.getElementById('acceptTime');
+            const acceptTimeValue = acceptTimeInput.value;
+            let slsj = '';
+            if (acceptTimeValue) {
+                const match = acceptTimeValue.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+                if (match) {
+                    const year = match[1];
+                    const month = match[2].padStart(2, '0');
+                    const day = match[3].padStart(2, '0');
+                    slsj = year + month + day;
+
+                } else {
+                    showToast('受理时间格式不正确，请使用"YYYY年M月D日"格式');
+                }
+            } else {
+                showToast('请先填写受理时间');
+                hideGeneratingStatus();
+                return;
+            }
             
             try {
+                const requestBody = {
+                    case_id: currentCaseId,
+                    case_no: currentCaseNo,
+                    numb: numb,
+                    request: requestContent,
+                    material: material,
+                    textPart3: textPart3,
+                    slsj: slsj
+                };
                 const response = await fetch('/api/award/generate-draft', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        case_id: currentCaseId,
-                        case_no: currentCaseNo,
-                        numb: numb,
-                        request: requestContent,
-                        material: material,
-                        textPart3: textPart3
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const result = await response.json();
@@ -1002,9 +944,9 @@
                     throw new Error(result.message || '初稿生成失败');
                 }
                 
-                // 任务已提交，设置5分钟后自动刷新（如果用户还在页面）
+                // 任务完成
                 hideGeneratingStatus();
-                setAutoRefresh('draft');
+                showToast('✅ 初稿生成成功！', 3000);
                 
             } catch (error) {
                 console.error('生成初稿失败:', error);

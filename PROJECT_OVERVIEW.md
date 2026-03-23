@@ -576,6 +576,12 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-23**: 一键生成初稿功能优化：
+  - 添加 `slsj` 参数传递（受理时间8位数字格式）到 Dify Workflow
+  - 简化前端代码，移除页面保活检测和自动刷新定时器
+  - 后端改为同步调用 Dify，等待结果返回
+  - 优化前端提示文字，移除调试日志
+  - 涉及的文件：`app.py`, `templates/award_make.html`
 - **2026-03-23**: 裁决书生成系统优化：
   - 将一键生成初稿和生成Word改为后台异步执行，前端立即返回不等待
   - 添加页面保活检测（visibilitychange），用户离开后回来仍触发自动刷新
