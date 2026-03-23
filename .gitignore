@@ -1,5 +1,44 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+*.so
+
+# 虚拟环境
 venv/
 .env
+.env.local
+
+# 日志文件
+*.log
+access.log
+error.log
+flask.log
+gunicorn.log
+
+# 测试文件
+test_*.py
+
+# 运行时生成的文档和输出
+文件生成/output/
+裁决书生成/
+
+# 临时文件
+dify.html
+调用dify.txt
+
+# 上传的模板文件（可选，如果不想提交示例模板）
+申请书模板*.docx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db

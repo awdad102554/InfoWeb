@@ -2670,6 +2670,7 @@ def award_elements(case_id):
                 conn.close()
         
         else:  # POST
+            import re
             data = request.get_json() or {}
             
             # 获取字段值
@@ -2685,7 +2686,6 @@ def award_elements(case_id):
             
             # 转换受理时间：从中文格式(2025年3月2日)转换为紧凑格式(20250302)
             if accept_time:
-                import re
                 # 匹配 "2025年3月2日" 或 "2025年03月02日" 格式
                 match = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日', accept_time.strip())
                 if match:
@@ -2953,47 +2953,55 @@ def generate_award():
         
         logger.info(f"[GenerateAward] 调用Workflow, numb={bianhao}")
         
-        # Step 5: 调用 Dify Workflow（异步，不等待结果）
-        workflow_url = f"{DIFY_BASE_URL}/workflows/run"
-        workflow_headers = {
-            "Authorization": f"Bearer {DIFY_API_KEY}",
-            "Content-Type": "application/json"
-        }
+        # Step 5: 后台线程异步调用 Dify Workflow
+        import threading
         
-        payload = {
-            "inputs": {
-                "numb": bianhao,
-                "textPart1": text_part1,
-                "textPart2": text_part2,
-                "textPart3": text_part3
-            },
-            "response_mode": "blocking",
-            "user": DIFY_USER_ID
-        }
+        def call_dify_workflow():
+            """在后台线程中调用Dify Workflow"""
+            try:
+                workflow_url = f"{DIFY_BASE_URL}/workflows/run"
+                workflow_headers = {
+                    "Authorization": f"Bearer {DIFY_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "inputs": {
+                        "numb": bianhao,
+                        "textPart1": text_part1,
+                        "textPart2": text_part2,
+                        "textPart3": text_part3
+                    },
+                    "response_mode": "blocking",
+                    "user": DIFY_USER_ID
+                }
+                
+                logger.info(f"[GenerateAward] 后台线程开始调用Workflow，预计8-10分钟完成")
+                workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=600)
+                
+                if workflow_resp.status_code == 200:
+                    logger.info(f"[GenerateAward] Workflow调用成功")
+                else:
+                    logger.error(f"[GenerateAward] Workflow调用失败: {workflow_resp.status_code}")
+            except Exception as e:
+                logger.error(f"[GenerateAward] 后台Workflow调用异常: {str(e)}")
         
-        # 设置较长的超时时间（10分钟）
-        try:
-            workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=600)
-            workflow_resp.raise_for_status()
-            workflow_result = workflow_resp.json()
-            logger.info(f"[GenerateAward] Workflow完成: {workflow_result}")
-        except requests.exceptions.Timeout:
-            # 超时认为任务已提交，在后台异步执行
-            logger.info(f"[GenerateAward] Workflow调用超时，任务已在后台运行")
-            workflow_result = {'data': {'id': f'timeout-{bianhao}'}, 'status': 'running'}
-        except Exception as e:
-            logger.error(f"[GenerateAward] Workflow调用异常: {e}")
-            # 任何其他错误也视为任务已提交
-            workflow_result = {'data': {'id': f'error-{bianhao}'}, 'status': 'running'}
+        # 启动后台线程
+        thread = threading.Thread(target=call_dify_workflow)
+        thread.daemon = True
+        thread.start()
         
-        # 立即返回，告诉前端生成任务已提交
+        logger.info(f"[GenerateAward] 已启动后台线程，立即返回")
+        
+        # 立即返回，不等待结果
         return jsonify({
             'code': 200,
-            'message': '裁决书生成任务已提交，请稍后查看',
+            'message': '裁决书生成任务已提交，预计8-10分钟后完成',
             'data': {
                 'bianhao': bianhao,
-                'workflow_id': workflow_result.get('data', {}).get('id'),
-                'status': 'generating'
+                'workflow_id': f'draft-{bianhao}',
+                'status': 'generating',
+                'estimated_time': '8-10分钟'
             },
             'timestamp': datetime.now().isoformat()
         })
@@ -3017,17 +3025,17 @@ def generate_award_draft():
     调用Dify Workflow生成初稿内容，并将结果更新到数据库
     Workflow key: app-OsDtggydgMq4R4NsqH111gBb
     参数: numb, request, material, textPart3
-    调用需要约3分钟
+    调用需要约3-5分钟，后台异步执行
     """
     try:
         data = request.get_json() or {}
         
         case_id = data.get('case_id', '')
         case_no = data.get('case_no', '')
-        numb = data.get('numb', '')  # 参考生成word的numb参数
-        request_content = data.get('request', '')  # 仲裁请求
-        material = data.get('material', '')  # 用户输入的建议
-        text_part3 = data.get('textPart3', '')  # 庭审笔录part3内容
+        numb = data.get('numb', '')
+        request_content = data.get('request', '')
+        material = data.get('material', '')
+        text_part3 = data.get('textPart3', '')
         
         if not case_id:
             return jsonify({
@@ -3045,80 +3053,58 @@ def generate_award_draft():
         logger.info(f"[GenerateDraft] 接收到请求: case_id={case_id}, case_no={case_no}, numb={numb}")
         logger.info(f"[GenerateDraft] 参数: request长度={len(request_content)}, material={material[:50] if material else '空'}..., textPart3长度={len(text_part3)}")
         
-        # 调用 Dify Workflow（阻塞模式，等待约3分钟）
-        workflow_url = f"{DIFY_BASE_URL}/workflows/run"
-        workflow_headers = {
-            "Authorization": f"Bearer {DIFY_API_KEY}",
-            "Content-Type": "application/json"
-        }
+        # 后台线程异步调用 Dify Workflow
+        import threading
         
-        payload = {
-            "inputs": {
-                "numb": numb,
-                "request": request_content,
-                "material": material,
-                "textPart3": text_part3
-            },
-            "response_mode": "blocking",
-            "user": DIFY_USER_ID
-        }
+        def call_dify_workflow():
+            """在后台线程中调用Dify Workflow"""
+            try:
+                workflow_url = f"{DIFY_BASE_URL}/workflows/run"
+                workflow_headers = {
+                    "Authorization": f"Bearer {DIFY_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "inputs": {
+                        "numb": numb,
+                        "request": request_content,
+                        "material": material,
+                        "textPart3": text_part3
+                    },
+                    "response_mode": "blocking",
+                    "user": DIFY_USER_ID
+                }
+                
+                logger.info(f"[GenerateDraft] 后台线程开始调用Workflow，预计3-5分钟完成")
+                workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=300)
+                
+                if workflow_resp.status_code == 200:
+                    logger.info(f"[GenerateDraft] Workflow调用成功")
+                else:
+                    logger.error(f"[GenerateDraft] Workflow调用失败: {workflow_resp.status_code}")
+            except Exception as e:
+                logger.error(f"[GenerateDraft] 后台Workflow调用异常: {str(e)}")
         
-        # 设置较长的超时时间（5分钟）
-        workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=300)
+        # 启动后台线程
+        thread = threading.Thread(target=call_dify_workflow)
+        thread.daemon = True
+        thread.start()
         
-        if workflow_resp.status_code != 200:
-            workflow_result = workflow_resp.json() if workflow_resp.text else {}
-            logger.error(f"[GenerateDraft] Workflow调用失败: {workflow_resp.status_code}, {workflow_result}")
-            return jsonify({
-                'code': 500,
-                'message': f'Workflow调用失败: {workflow_result.get("message", "未知错误")}',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 500
+        logger.info(f"[GenerateDraft] 已启动后台线程，立即返回")
         
-        workflow_result = workflow_resp.json()
-        logger.info(f"[GenerateDraft] Workflow返回: {workflow_result}")
-        
-        # 提取生成的初稿内容
-        draft_content = workflow_result.get('data', {}).get('outputs', {}).get('result', '')
-        if not draft_content:
-            # 尝试其他可能的字段名
-            outputs = workflow_result.get('data', {}).get('outputs', {})
-            for key in ['result', 'content', 'output', 'text', 'draft']:
-                if key in outputs and outputs[key]:
-                    draft_content = outputs[key]
-                    break
-        
-        if not draft_content:
-            logger.warning(f"[GenerateDraft] Workflow返回内容为空，outputs={workflow_result.get('data', {}).get('outputs', {})}")
-            return jsonify({
-                'code': 500,
-                'message': '生成初稿内容为空',
-                'data': None,
-                'timestamp': datetime.now().isoformat()
-            }), 500
-        
-        logger.info(f"[GenerateDraft] 生成初稿成功，内容长度={len(draft_content)}")
-        
-        # Dify工作流已将初稿保存到数据库，后端只需返回成功状态
-        # 前端收到成功响应后刷新界面即可
+        # 立即返回，不等待结果
         return jsonify({
             'code': 200,
-            'message': '初稿生成成功，请刷新页面查看',
+            'message': '初稿生成任务已提交，预计3-5分钟后完成',
             'data': {
-                'success': True
+                'success': True,
+                'case_id': case_id,
+                'estimated_time': '3-5分钟'
             },
             'timestamp': datetime.now().isoformat()
         })
         
-    except requests.exceptions.Timeout:
-        logger.error(f"[GenerateDraft] Workflow调用超时")
-        return jsonify({
-            'code': 504,
-            'message': '生成初稿超时，请稍后重试',
-            'data': None,
-            'timestamp': datetime.now().isoformat()
-        }), 504
     except Exception as e:
         logger.error(f"[GenerateDraft] 生成初稿失败: {str(e)}")
         import traceback

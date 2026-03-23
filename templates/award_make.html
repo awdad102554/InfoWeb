@@ -454,6 +454,12 @@
         let currentCaseId = null;
         let currentCaseNo = '';
         let caseData = null;
+        
+        // 页面保活检测相关变量
+        let isUserOnPage = true;  // 用户是否在当前页面
+        let draftRefreshTimer = null;  // 一键生成初稿的刷新定时器
+        let wordRefreshTimer = null;   // 生成Word的刷新定时器
+        let lastRequestType = null;    // 最后一次请求的类型：'draft' 或 'word'
 
         // 字段映射
         const FIELD_MAP = {
@@ -482,6 +488,81 @@
                 checkExistingFiles();
             });
         };
+        
+        // 页面可见性变化监听（判断用户是否还在当前页面）
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                // 用户离开页面
+                isUserOnPage = false;
+                console.log('[PageVisibility] 用户离开页面');
+            } else if (document.visibilityState === 'visible') {
+                // 用户回到页面
+                isUserOnPage = true;
+                console.log('[PageVisibility] 用户回到页面');
+            }
+        });
+        
+        // 页面卸载时清理定时器
+        window.addEventListener('beforeunload', function() {
+            if (draftRefreshTimer) {
+                clearTimeout(draftRefreshTimer);
+                draftRefreshTimer = null;
+            }
+            if (wordRefreshTimer) {
+                clearTimeout(wordRefreshTimer);
+                wordRefreshTimer = null;
+            }
+        });
+        
+        // 设置自动刷新定时器
+        function setAutoRefresh(type) {
+            // 清除之前的定时器
+            if (draftRefreshTimer) {
+                clearTimeout(draftRefreshTimer);
+                draftRefreshTimer = null;
+            }
+            if (wordRefreshTimer) {
+                clearTimeout(wordRefreshTimer);
+                wordRefreshTimer = null;
+            }
+            
+            lastRequestType = type;
+            
+            if (type === 'draft') {
+                // 一键生成初稿：5分钟后自动刷新（如果用户还在页面）
+                console.log('[AutoRefresh] 设置一键生成初稿5分钟后自动刷新');
+                showToast('初稿生成任务已提交，5分钟后将自动刷新页面', 5000);
+                
+                draftRefreshTimer = setTimeout(function() {
+                    if (isUserOnPage && lastRequestType === 'draft') {
+                        console.log('[AutoRefresh] 5分钟到达，用户仍在页面，自动刷新');
+                        showToast('初稿生成完成，正在刷新页面...', 3000);
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        console.log('[AutoRefresh] 5分钟到达，用户已离开页面或请求类型不匹配，不自动刷新');
+                    }
+                }, 5 * 60 * 1000); // 5分钟 = 300000毫秒
+                
+            } else if (type === 'word') {
+                // 生成Word：8分钟后自动刷新（如果用户还在页面）
+                console.log('[AutoRefresh] 设置生成Word 8分钟后自动刷新');
+                showToast('Word生成任务已提交，8分钟后将自动刷新页面', 5000);
+                
+                wordRefreshTimer = setTimeout(function() {
+                    if (isUserOnPage && lastRequestType === 'word') {
+                        console.log('[AutoRefresh] 8分钟到达，用户仍在页面，自动刷新');
+                        showToast('Word生成完成，正在刷新页面...', 3000);
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        console.log('[AutoRefresh] 8分钟到达，用户已离开页面或请求类型不匹配，不自动刷新');
+                    }
+                }, 8 * 60 * 1000); // 8分钟 = 480000毫秒
+            }
+        }
 
         // 加载数据
         async function loadData() {
@@ -730,7 +811,78 @@
         // 生成Word（调用Dify Workflow）
         let pollingInterval = null;
         
+        // 检查裁决书数据是否完整（用于生成Word前验证）
+        async function checkDataCompletenessForGenerate() {
+            try {
+                const response = await fetch(`/api/award/elements/${currentCaseId}`);
+                const result = await response.json();
+                
+                if (result.code !== 200 || !result.data) {
+                    return {
+                        valid: false,
+                        message: '未找到该案件的裁决书要素数据，请先保存'
+                    };
+                }
+                
+                const data = result.data;
+                
+                // 检查必填字段（除了生成文件路径和受理时间）
+                const requiredFields = [
+                    { key: '仲裁请求', name: '仲裁请求' },
+                    { key: '申请人称', name: '申请人称' },
+                    { key: '被申请人称', name: '被申请人称' },
+                    { key: '经审理查明', name: '经审理查明' },
+                    { key: '本委认为', name: '本委认为' }
+                ];
+                
+                const missingFields = [];
+                for (const field of requiredFields) {
+                    const value = data[field.key];
+                    if (!value || (typeof value === 'string' && !value.trim())) {
+                        missingFields.push(field.name);
+                    }
+                }
+                
+                if (missingFields.length > 0) {
+                    return {
+                        valid: false,
+                        message: `以下字段不能为空：${missingFields.join('、')}`
+                    };
+                }
+                
+                // 检查终局裁决或非终局裁决至少有一个有值
+                const finalDecision = data['终局裁决'];
+                const nonFinalDecision = data['非终局裁决'];
+                
+                const hasFinalDecision = finalDecision && typeof finalDecision === 'string' && finalDecision.trim();
+                const hasNonFinalDecision = nonFinalDecision && typeof nonFinalDecision === 'string' && nonFinalDecision.trim();
+                
+                if (!hasFinalDecision && !hasNonFinalDecision) {
+                    return {
+                        valid: false,
+                        message: '终局裁决和非终局裁决至少需要一个有值'
+                    };
+                }
+                
+                return { valid: true, data: data };
+                
+            } catch (error) {
+                console.error('检查数据完整性失败:', error);
+                return {
+                    valid: false,
+                    message: '检查数据完整性失败，请稍后重试'
+                };
+            }
+        }
+        
         async function generateWord() {
+            // Step 1: 检查数据库数据完整性
+            const checkResult = await checkDataCompletenessForGenerate();
+            if (!checkResult.valid) {
+                showToast(checkResult.message);
+                return;
+            }
+            
             const data = {
                 case_id: currentCaseId,
                 case_no: currentCaseNo,
@@ -744,14 +896,7 @@
                 受理时间: document.getElementById('acceptTime').value
             };
             
-            // 检查是否有内容
-            const hasContent = Object.values(data).some(v => v && typeof v === 'string' && v.trim());
-            if (!hasContent) {
-                showToast('请先填写裁决书内容');
-                return;
-            }
-            
-            showGeneratingStatus('生成任务已提交，预计需要5-10分钟...');
+            showGeneratingStatus('生成任务已提交，预计需要8-10分钟...');
             
             try {
                 const response = await fetch('/api/award/generate', {
@@ -766,10 +911,9 @@
                     throw new Error(result.message || '生成任务提交失败');
                 }
                 
-                showToast('生成任务已提交，开始轮询查询...');
-                
-                // 开始轮询查询生成状态
-                startPollingStatus();
+                // 任务已提交，设置8分钟后自动刷新（如果用户还在页面）
+                hideGeneratingStatus();
+                setAutoRefresh('word');
                 
             } catch (error) {
                 console.error('生成失败:', error);
@@ -836,7 +980,7 @@
                 return; // 用户取消
             }
             
-            showGeneratingStatus('初稿生成任务已提交，预计需要3分钟左右...');
+            showGeneratingStatus('初稿生成任务已提交，预计需要3-5分钟...');
             
             try {
                 const response = await fetch('/api/award/generate-draft', {
@@ -858,14 +1002,9 @@
                     throw new Error(result.message || '初稿生成失败');
                 }
                 
-                // Dify工作流已将初稿保存到数据库，刷新页面即可看到新内容
+                // 任务已提交，设置5分钟后自动刷新（如果用户还在页面）
                 hideGeneratingStatus();
-                showToast('初稿生成成功！正在刷新页面...');
-                
-                // 延迟1秒后刷新页面，让用户看到提示
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
+                setAutoRefresh('draft');
                 
             } catch (error) {
                 console.error('生成初稿失败:', error);
@@ -1304,7 +1443,7 @@
         }
 
         // 显示提示
-        function showToast(message) {
+        function showToast(message, duration = 3000) {
             const toast = document.createElement('div');
             toast.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg z-[100] flex items-center gap-2';
             toast.style.animation = 'fadeIn 0.3s ease-out';
@@ -1316,7 +1455,7 @@
                 toast.style.transform = 'translateX(-50%) translateY(-20px)';
                 toast.style.transition = 'all 0.3s';
                 setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            }, duration);
         }
 
         // 案件数据缓存（用于获取笔录内容）
