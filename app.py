@@ -2699,6 +2699,8 @@ def award_elements(case_id):
             final_decision = data.get('终局裁决', '')
             non_final_decision = data.get('非终局裁决', '')
             accept_time = data.get('受理时间', '')
+            undisputed_facts = data.get('无争议事实', '')
+            request_and_facts = data.get('仲裁请求和相关案件事实', '')
             
             # 转换受理时间：从中文格式(2025年3月2日)转换为紧凑格式(20250302)
             if accept_time:
@@ -2746,24 +2748,29 @@ def award_elements(case_id):
                             `本委认为` = %s,
                             `终局裁决` = %s,
                             `非终局裁决` = %s,
-                            `受理时间` = %s
+                            `受理时间` = %s,
+                            `无争议事实` = %s,
+                            `仲裁请求和相关案件事实` = %s
                         WHERE `案号` = %s
                     """, (
                         arbitration_request, applicant_claim, respondent_claim,
                         facts_found, committee_opinion, final_decision,
-                        non_final_decision, accept_time, bianhao
+                        non_final_decision, accept_time, undisputed_facts,
+                        request_and_facts, bianhao
                     ))
                 else:
                     # 插入
                     cursor.execute("""
                         INSERT INTO `裁决书要素保存`
                         (`案号`, `仲裁请求`, `申请人称`, `被申请人称`, `经审理查明`,
-                         `本委认为`, `终局裁决`, `非终局裁决`, `受理时间`)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         `本委认为`, `终局裁决`, `非终局裁决`, `受理时间`,
+                         `无争议事实`, `仲裁请求和相关案件事实`)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         bianhao, arbitration_request, applicant_claim, respondent_claim,
                         facts_found, committee_opinion, final_decision,
-                        non_final_decision, accept_time
+                        non_final_decision, accept_time, undisputed_facts,
+                        request_and_facts
                     ))
                 
                 conn.commit()
