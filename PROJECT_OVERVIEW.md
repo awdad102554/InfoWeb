@@ -576,6 +576,15 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-24**: 添加庭审笔录信息提取功能，用于生成Word时传递info参数：
+  - 新增 `court_record_extractor.py`：从textPart1/2/3提取委员会、案号、案由、开庭时间、受理时间、当事人信息、仲裁员、书记员等字段
+  - 新增 `get_case_info.py`：独立工具脚本，用于获取案件信息JSON字符串
+  - 新增 `batch_test.py`：批量测试脚本，覆盖多种笔录格式
+  - 新增 `court_record_extractor_README.md`：使用文档
+  - 修改 `app.py`：在`/api/award/generate`接口中调用提取脚本生成info参数，传递给Dify Workflow
+  - 日期格式处理：去除前导零（03月04日 -> 3月4日）
+  - 姓名格式化：2字姓名自动添加`&nbsp;`（如"吴洁"→"吴&nbsp;洁"）
+  - 涉及的文件：`court_record_extractor.py`, `get_case_info.py`, `batch_test.py`, `court_record_extractor_README.md`, `app.py`
 - **2026-03-23**: 一键生成初稿功能优化：
   - 添加 `slsj` 参数传递（受理时间8位数字格式）到 Dify Workflow
   - 简化前端代码，移除页面保活检测和自动刷新定时器

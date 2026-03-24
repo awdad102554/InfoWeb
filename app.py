@@ -16,6 +16,22 @@ import io
 # 添加modules目录到Python路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules'))
 
+# 导入笔录提取模块
+from court_record_extractor import extract_court_record, format_date_no_leading_zero
+
+
+def format_handle_at(handle_at: str) -> str:
+    """将 handle_at 格式化为 XXXX年X月X日（月份日期不带前导零）"""
+    if not handle_at:
+        return ""
+    match = re.search(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', str(handle_at))
+    if match:
+        year = match.group(1)
+        month = int(match.group(2))
+        day = int(match.group(3))
+        return f"{year}年{month}月{day}日"
+    return handle_at
+
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 import logging
@@ -2844,20 +2860,32 @@ def generate_award():
             if match:
                 bianhao = f"{match.group(1)}{match.group(2)}"
         
+        # 提取案件信息JSON（用于info参数）
+        handle_at_formatted = format_handle_at(case_detail.get('handle_at', ''))
+        info_json = extract_court_record(text_part1, text_part2, text_part3, handle_at_formatted)
+        info_json_str = json.dumps(info_json, ensure_ascii=False)
+        
+        logger.info(f"[GenerateAward] 案件信息JSON: {info_json_str[:200]}...")
+        
         # 调用Dify
         DIFY_API_KEY = "app-eEMlvxJweUDbvuOaJrUyaCeo"
         DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
         
+        # 构建payload，包含info参数
         payload = {
             "inputs": {
                 "numb": bianhao,
                 "textPart1": text_part1,
                 "textPart2": text_part2,
-                "textPart3": text_part3
+                "textPart3": text_part3,
+                "info": info_json_str  # 添加案件信息JSON
             },
             "response_mode": "blocking",
             "user": f"user-{case_id}"
         }
+        
+        # 记录发送给Dify的参数（用于调试）
+        logger.info(f"[GenerateAward] Dify请求参数: {json.dumps(payload, ensure_ascii=False)[:500]}...")
         
         resp = requests.post(
             f"{DIFY_BASE_URL}/workflows/run",
@@ -2874,7 +2902,10 @@ def generate_award():
                 'data': {'task_id': result.get('task_id', 'N/A')}
             })
         else:
-            return jsonify({'code': 500, 'message': f'Dify错误: {resp.status_code}'}), 500
+            # 记录Dify错误详情
+            error_text = resp.text[:500]
+            logger.error(f"[GenerateAward] Dify错误: status={resp.status_code}, response={error_text}")
+            return jsonify({'code': 500, 'message': f'Dify错误:{resp.status_code}, 详情:{error_text}'}), 500
             
     except Exception as e:
         with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
