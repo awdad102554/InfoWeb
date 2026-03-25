@@ -3157,6 +3157,7 @@ def optimize_text_workflow():
     - type: 1=申请人称, 2=被申请人称, 3=经审理查明
     - numb: 8位数案号
     - text: 需要优化的原始文本内容
+    - user_request: 用户的优化建议（可选）
     """
     try:
         data = request.get_json() or {}
@@ -3164,6 +3165,7 @@ def optimize_text_workflow():
         type_code = data.get('type', 1)
         numb = data.get('numb', '')
         text = data.get('text', '')
+        user_request = data.get('user_request', '')
         
         # 参数校验
         if not text or not text.strip():
@@ -3186,7 +3188,7 @@ def optimize_text_workflow():
         type_names = {1: '申请人称', 2: '被申请人称', 3: '经审理查明'}
         type_name = type_names.get(type_code, '未知类型')
         
-        logger.info(f"[OptimizeText] 接收到请求: type={type_code}({type_name}), numb={numb}, text长度={len(text)}")
+        logger.info(f"[OptimizeText] 接收到请求: type={type_code}({type_name}), numb={numb}, text长度={len(text)}, user_request={user_request[:50] if user_request else '无'}...")
         logger.info(f"[OptimizeText] text前100字: {text[:100]}...")
         
         # Dify 配置
@@ -3201,11 +3203,16 @@ def optimize_text_workflow():
             "Content-Type": "application/json"
         }
         
+        # 如果用户没有提供优化建议，使用"无"
+        if not user_request or not user_request.strip():
+            user_request = "无"
+        
         payload = {
             "inputs": {
                 "numb": str(numb),
                 "type": str(type_code),
-                "text": text
+                "text": text,
+                "userRequest": user_request
             },
             "response_mode": "blocking",
             "user": DIFY_USER_ID

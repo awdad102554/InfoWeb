@@ -576,6 +576,19 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-25**: 一键优化功能改进：
+  - 添加自定义弹窗 `showOptimizeDialog()`，风格与"自动生成"一致（紫色渐变标题栏）
+  - 弹窗包含优化建议输入框、提示信息和操作按钮
+  - 支持点击遮罩层或按 ESC 键关闭弹窗
+  - 用户未输入建议时，后端使用默认优化提示传递给 Dify
+  - 修复 Dify `userRequest is required` 错误
+  - 涉及的文件：`templates/award_make.html`, `app.py`
+- **2026-03-25**: 生成Word前自动保存数据：
+  - 在 `generateWord()` 函数开头添加自动保存逻辑
+  - 生成Word前先调用 `/api/award/elements/{case_id}` POST 接口保存当前页面数据
+  - 保存失败时提示用户手动保存，不继续生成Word
+  - 避免使用旧信息生成Word的问题
+  - 涉及的文件：`templates/award_make.html`
 - **2026-03-25**: 裁决书制作页面改版：实时预览改为全局撰写编辑器（固定标签+编辑区方案）：
   - 将右侧只读预览区域改为分章节的可编辑区域
   - 每个章节有固定的渐变灰色标题栏（带左边框高亮），章节名明显不可编辑
