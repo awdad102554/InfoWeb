@@ -3147,6 +3147,145 @@ def generate_claim_workflow():
         }), 500
 
 
+@app.route('/api/workflow/optimize-text', methods=['POST'])
+def optimize_text_workflow():
+    """
+    调用Dify Workflow一键优化文本（申请人称/被申请人称/经审理查明）
+    Dify Key: app-YjTFrQ3LKrFyK5Q7c0CajCJN
+    
+    请求参数:
+    - type: 1=申请人称, 2=被申请人称, 3=经审理查明
+    - numb: 8位数案号
+    - text: 需要优化的原始文本内容
+    """
+    try:
+        data = request.get_json() or {}
+        
+        type_code = data.get('type', 1)
+        numb = data.get('numb', '')
+        text = data.get('text', '')
+        
+        # 参数校验
+        if not text or not text.strip():
+            logger.warning(f"[OptimizeText] 文本内容为空")
+            return jsonify({
+                'success': False,
+                'content': None,
+                'message': '文本内容不能为空'
+            }), 400
+        
+        if not numb:
+            logger.warning(f"[OptimizeText] 案号为空")
+            return jsonify({
+                'success': False,
+                'content': None,
+                'message': '案号不能为空'
+            }), 400
+        
+        # 类型映射
+        type_names = {1: '申请人称', 2: '被申请人称', 3: '经审理查明'}
+        type_name = type_names.get(type_code, '未知类型')
+        
+        logger.info(f"[OptimizeText] 接收到请求: type={type_code}({type_name}), numb={numb}, text长度={len(text)}")
+        logger.info(f"[OptimizeText] text前100字: {text[:100]}...")
+        
+        # Dify 配置
+        DIFY_API_KEY = "app-YjTFrQ3LKrFyK5Q7c0CajCJN"
+        DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
+        DIFY_USER_ID = f"user-{numb}-optimize-{type_code}"
+        
+        # 调用 Dify Workflow（阻塞模式，等待结果）
+        workflow_url = f"{DIFY_BASE_URL}/workflows/run"
+        workflow_headers = {
+            "Authorization": f"Bearer {DIFY_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "inputs": {
+                "numb": str(numb),
+                "type": str(type_code),
+                "text": text
+            },
+            "response_mode": "blocking",
+            "user": DIFY_USER_ID
+        }
+        
+        logger.info(f"[OptimizeText] 调用Workflow: type={type_code}, numb={numb}")
+        logger.info(f"[OptimizeText] 请求payload: {payload}")
+        
+        # 设置较长的超时时间（约2分钟）
+        workflow_resp = requests.post(workflow_url, headers=workflow_headers, json=payload, timeout=120)
+        
+        logger.info(f"[OptimizeText] Workflow响应状态码: {workflow_resp.status_code}")
+        
+        if workflow_resp.status_code != 200:
+            try:
+                workflow_result = workflow_resp.json() if workflow_resp.text else {}
+            except:
+                workflow_result = {'raw_response': workflow_resp.text[:500]}
+            logger.error(f"[OptimizeText] Workflow调用失败: {workflow_result}")
+            return jsonify({
+                'success': False,
+                'content': None,
+                'message': f'优化服务调用失败: {workflow_result.get("message", "未知错误")}'
+            }), 500
+        
+        try:
+            workflow_result = workflow_resp.json()
+            logger.info(f"[OptimizeText] Workflow返回: {workflow_result}")
+        except Exception as e:
+            logger.error(f"[OptimizeText] 解析Workflow响应失败: {str(e)}, 原始响应: {workflow_resp.text[:500]}")
+            return jsonify({
+                'success': False,
+                'content': None,
+                'message': f'解析优化服务响应失败: {str(e)}'
+            }), 500
+        
+        # 从返回结果中提取优化后的内容
+        result_data = workflow_result.get('data', {})
+        outputs = result_data.get('outputs', {})
+        
+        # 尝试从outputs中获取结果
+        optimized_content = outputs.get('result', '') or outputs.get('content', '') or outputs.get('text', '')
+        
+        # 如果outputs中没有，尝试从answer或其他字段获取
+        if not optimized_content:
+            optimized_content = result_data.get('answer', '') or result_data.get('content', '')
+        
+        if not optimized_content:
+            return jsonify({
+                'success': False,
+                'content': None,
+                'message': '优化服务返回结果为空'
+            }), 500
+        
+        logger.info(f"[OptimizeText] 优化成功: type={type_code}, 输出长度={len(optimized_content)}")
+        
+        return jsonify({
+            'success': True,
+            'content': optimized_content,
+            'message': '优化成功'
+        })
+        
+    except requests.exceptions.Timeout:
+        logger.error("[OptimizeText] Workflow调用超时")
+        return jsonify({
+            'success': False,
+            'content': None,
+            'message': '优化服务调用超时（超过2分钟），请稍后重试'
+        }), 504
+    except Exception as e:
+        logger.error(f"优化文本失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'content': None,
+            'message': f'优化失败: {str(e)}'
+        }), 500
+
+
 @app.route('/api/award/status/<case_id>', methods=['GET'])
 def award_status(case_id):
     """

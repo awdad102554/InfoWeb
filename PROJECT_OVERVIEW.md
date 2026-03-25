@@ -576,6 +576,13 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-25**: 添加裁决书文本 AI 一键优化功能：
+  - 后端新增 `/api/workflow/optimize-text` 接口，调用 Dify Workflow 对文本进行智能优化
+  - 支持优化类型：1=申请人称, 2=被申请人称, 3=经审理查明
+  - 前端在 award_make.html 添加 3 个"一键优化"按钮（紫色渐变样式）
+  - 实现按钮互斥机制：一键优化与自动生成按钮互斥，避免同时触发
+  - Dify Workflow Key: `app-YjTFrQ3LKrFyK5Q7c0CajCJN`，阻塞调用模式（超时2分钟）
+  - 涉及的文件：`app.py`, `templates/award_make.html`
 - **2026-03-24**: 添加庭审笔录信息提取功能，用于生成Word时传递info参数：
   - 新增 `court_record_extractor.py`：从textPart1/2/3提取委员会、案号、案由、开庭时间、受理时间、当事人信息、仲裁员、书记员等字段
   - 新增 `get_case_info.py`：独立工具脚本，用于获取案件信息JSON字符串
