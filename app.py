@@ -2990,12 +2990,30 @@ def generate_award_draft():
         if resp.status_code == 200:
             result = resp.json()
             task_id = result.get('task_id', 'N/A')
+            
+            # 从 Dify 返回中提取 AI 生成的字段
+            # 根据 Dify Workflow 的输出格式解析
+            dify_data = result.get('data', {})
+            outputs = dify_data.get('outputs', {})
+            
+            # 提取无争议事实和仲裁请求和相关案件事实
+            undisputed_facts = outputs.get('无争议事实', '')
+            request_and_facts = outputs.get('仲裁请求和相关案件事实', '')
+            
             with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
                 f.write(f"调用成功，task_id: {task_id}\n")
+                f.write(f"无争议事实长度: {len(undisputed_facts) if undisputed_facts else 0}\n")
+                f.write(f"仲裁请求和相关案件事实长度: {len(request_and_facts) if request_and_facts else 0}\n")
+            
             return jsonify({
                 'code': 200,
                 'message': '✅ 初稿生成成功！',
-                'data': {'task_id': task_id, 'case_id': case_id}
+                'data': {
+                    'task_id': task_id, 
+                    'case_id': case_id,
+                    '无争议事实': undisputed_facts,
+                    '仲裁请求和相关案件事实': request_and_facts
+                }
             })
         else:
             error_text = resp.text[:200]
