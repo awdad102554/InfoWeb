@@ -193,7 +193,7 @@
                             <textarea id="arbitrationRequest" rows="4" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
                                 placeholder="点击此处输入仲裁请求，或使用右侧\"撰写裁决书初稿助手\"生成..."
-                                oninput="updatePreview(); checkFieldStatus(this)"></textarea>
+                                oninput="debouncedUpdatePreview(); checkFieldStatus(this)"></textarea>
                         </div>
 
                         <!-- 申请人称 -->
@@ -223,7 +223,7 @@
                             <textarea id="applicantClaim" rows="5" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
                                 placeholder="申请人主张的事实和理由..."
-                                oninput="updatePreview(); checkFieldStatus(this)"></textarea>
+                                oninput="debouncedUpdatePreview(); checkFieldStatus(this)"></textarea>
                         </div>
 
                         <!-- 被申请人称 -->
@@ -253,7 +253,7 @@
                             <textarea id="respondentClaim" rows="5" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
                                 placeholder="被申请人答辩意见..."
-                                oninput="updatePreview(); checkFieldStatus(this)"></textarea>
+                                oninput="debouncedUpdatePreview(); checkFieldStatus(this)"></textarea>
                         </div>
 
                         <!-- 经审理查明 -->
@@ -278,7 +278,7 @@
                             <textarea id="factsFound" rows="6" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
                                 placeholder="经审理查明的事实..."
-                                oninput="updatePreview(); checkFieldStatus(this)"></textarea>
+                                oninput="debouncedUpdatePreview(); checkFieldStatus(this)"></textarea>
                         </div>
 
                         <!-- 本委认为 -->
@@ -295,7 +295,7 @@
                             <textarea id="committeeOpinion" rows="6" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
                                 placeholder="法律适用和理由分析..."
-                                oninput="updatePreview(); checkFieldStatus(this)"></textarea>
+                                oninput="debouncedUpdatePreview(); checkFieldStatus(this)"></textarea>
                         </div>
 
                         <!-- 终局裁决 -->
@@ -312,7 +312,7 @@
                             <textarea id="finalDecision" rows="5" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
                                 placeholder="终局裁决结果..."
-                                oninput="updatePreview(); checkFieldStatus(this)"></textarea>
+                                oninput="debouncedUpdatePreview(); checkFieldStatus(this)"></textarea>
                         </div>
 
                         <!-- 非终局裁决 -->
@@ -329,7 +329,7 @@
                             <textarea id="nonFinalDecision" rows="5" 
                                 class="input-field w-full rounded-lg px-4 py-3 text-sm bg-gray-50" 
                                 placeholder="非终局裁决结果（如适用）..."
-                                oninput="updatePreview(); checkFieldStatus(this)"></textarea>
+                                oninput="debouncedUpdatePreview(); checkFieldStatus(this)"></textarea>
                         </div>
 
                         <!-- 隐藏的AI生成字段（数据存储用） -->
@@ -352,7 +352,7 @@
                         <div class="flex justify-between items-center mb-4 border-b pb-3">
                             <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
                                 <button id="tabPreview" onclick="handlePreviewTabClick()" class="px-4 py-2 rounded-md text-sm font-medium transition-all bg-white text-blue-600 shadow-sm">
-                                    <i class="fas fa-eye mr-1" id="tabPreviewIcon"></i><span id="tabPreviewText">实时预览</span>
+                                    <i class="fas fa-edit mr-1" id="tabPreviewIcon"></i><span id="tabPreviewText">全局撰写</span>
                                 </button>
                                 <button id="tabAI" onclick="switchTab('ai')" class="px-4 py-2 rounded-md text-sm font-medium transition-all text-gray-600 hover:text-gray-900">
                                     <i class="fas fa-robot mr-1"></i>撰写裁决书初稿助手
@@ -369,86 +369,113 @@
                             </div>
                         </div>
                         
-                        <!-- 预览内容 -->
-                        <div id="previewContainer" class="document-preview rounded-lg p-8 document-font text-sm leading-loose overflow-auto max-h-[800px] transition-transform duration-200 origin-top" style="min-height: 700px;">
-                            <!-- 文档预览模式 -->
-                            <div id="documentPreview">
-                                <div class="text-center mb-8 pb-4 border-b-2 border-gray-800">
-                                <h2 class="text-3xl font-bold mb-3 text-black tracking-widest">仲裁裁决书</h2>
-                                <p id="previewCaseNo" class="text-gray-700 font-medium text-lg"></p>
-                            </div>
-
-                            <div class="space-y-6 text-justify">
-                                <div id="previewSection1" class="hidden opacity-0 transition-opacity duration-500">
-                                    <h4 class="font-bold mb-3 text-gray-900 text-base flex items-center">
-                                        <span class="w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs mr-2">一</span>
-                                        仲裁请求
-                                    </h4>
-                                    <p class="text-gray-800 leading-8 text-justify pl-0"></p>
+                        <!-- 全局撰写内容 -->
+                        <div id="previewContainer" class="document-preview rounded-lg p-4 document-font text-sm leading-loose overflow-y-auto overflow-x-hidden max-h-[800px] transition-transform duration-200 origin-top" style="min-height: 700px;">
+                            <!-- 全局撰写模式 -->
+                            <div id="documentPreview" class="h-full flex flex-col">
+                                <div class="flex justify-between items-center mb-3 pb-2 border-b border-gray-200">
+                                    <h3 class="text-sm font-medium text-gray-700">
+                                        <i class="fas fa-edit mr-1 text-blue-500"></i>全局撰写
+                                    </h3>
+                                    <span class="text-xs text-gray-400">在此编辑会自动同步到左侧对应字段</span>
                                 </div>
                                 
-                                <div id="previewSection2" class="hidden opacity-0 transition-opacity duration-500">
-                                    <h4 class="font-bold mb-3 text-gray-900 text-base flex items-center">
-                                        <span class="w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs mr-2">二</span>
-                                        申请人称
-                                    </h4>
-                                    <p class="text-gray-800 leading-8 text-justify"></p>
-                                </div>
-                                
-                                <div id="previewSection3" class="hidden opacity-0 transition-opacity duration-500">
-                                    <h4 class="font-bold mb-3 text-gray-900 text-base flex items-center">
-                                        <span class="w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs mr-2">三</span>
-                                        被申请人称
-                                    </h4>
-                                    <p class="text-gray-800 leading-8 text-justify"></p>
-                                </div>
-                                
-                                <div id="previewSection4" class="hidden opacity-0 transition-opacity duration-500">
-                                    <h4 class="font-bold mb-3 text-gray-900 text-base flex items-center">
-                                        <span class="w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs mr-2">四</span>
-                                        经审理查明
-                                    </h4>
-                                    <p class="text-gray-800 leading-8 text-justify"></p>
-                                </div>
-                                
-                                <div id="previewSection5" class="hidden opacity-0 transition-opacity duration-500">
-                                    <h4 class="font-bold mb-3 text-gray-900 text-base flex items-center">
-                                        <span class="w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs mr-2">五</span>
-                                        本委认为
-                                    </h4>
-                                    <p class="text-gray-800 leading-8 text-justify"></p>
-                                </div>
-                                
-                                <div id="previewSection6" class="hidden opacity-0 transition-opacity duration-500">
-                                    <h4 class="font-bold mb-3 text-gray-900 text-base flex items-center">
-                                        <span class="w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs mr-2">六</span>
-                                        终局裁决
-                                    </h4>
-                                    <p class="text-gray-800 leading-8 font-semibold text-justify"></p>
-                                </div>
-
-                                <div id="previewSection7" class="hidden opacity-0 transition-opacity duration-500">
-                                    <h4 class="font-bold mb-3 text-gray-900 text-base flex items-center">
-                                        <span class="w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs mr-2">七</span>
-                                        非终局裁决
-                                    </h4>
-                                    <p class="text-gray-800 leading-8 text-justify pl-0"></p>
-                                </div>
-                            </div>
-
-                            <div class="mt-16 pt-8 border-t border-gray-300 text-center text-gray-700 text-sm hidden" id="footerInfo">
-                                <div class="flex justify-between mt-8">
-                                    <div class="text-left">
-                                        <p>仲裁员：_______________</p>
+                                <!-- 分章节编辑区域 - 高度自适应，无滚动条 -->
+                                <div class="space-y-4">
+                                    <!-- 一、仲裁请求 -->
+                                    <div class="section-editor" data-field="arbitrationRequest">
+                                        <div class="flex items-center mb-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded px-2 py-1.5 border-l-4 border-gray-600">
+                                            <span class="w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs mr-2 shadow-sm">一</span>
+                                            <span class="font-semibold text-gray-800 text-xs">仲裁请求</span>
+                                        </div>
+                                        <textarea id="globalEditor_arbitrationRequest" 
+                                            class="global-editor-textarea w-full p-3 text-sm leading-7 text-gray-800 bg-white border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-hidden"
+                                            style="min-height: 60px; font-family: 'SimSun', '宋体', serif;"
+                                            placeholder="在此输入仲裁请求..."
+                                            oninput="autoResizeTextarea(this)"></textarea>
                                     </div>
-                                    <div class="text-right">
-                                        <p id="previewDate">日期：_______年____月____日</p>
+                                    
+                                    <!-- 二、申请人称 -->
+                                    <div class="section-editor" data-field="applicantClaim">
+                                        <div class="flex items-center mb-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded px-2 py-1.5 border-l-4 border-gray-600">
+                                            <span class="w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs mr-2 shadow-sm">二</span>
+                                            <span class="font-semibold text-gray-800 text-xs">申请人称</span>
+                                        </div>
+                                        <textarea id="globalEditor_applicantClaim" 
+                                            class="global-editor-textarea w-full p-3 text-sm leading-7 text-gray-800 bg-white border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-hidden"
+                                            style="min-height: 60px; font-family: 'SimSun', '宋体', serif;"
+                                            placeholder="在此输入申请人称..."
+                                            oninput="autoResizeTextarea(this)"></textarea>
                                     </div>
+                                    
+                                    <!-- 三、被申请人称 -->
+                                    <div class="section-editor" data-field="respondentClaim">
+                                        <div class="flex items-center mb-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded px-2 py-1.5 border-l-4 border-gray-600">
+                                            <span class="w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs mr-2 shadow-sm">三</span>
+                                            <span class="font-semibold text-gray-800 text-xs">被申请人称</span>
+                                        </div>
+                                        <textarea id="globalEditor_respondentClaim" 
+                                            class="global-editor-textarea w-full p-3 text-sm leading-7 text-gray-800 bg-white border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-hidden"
+                                            style="min-height: 60px; font-family: 'SimSun', '宋体', serif;"
+                                            placeholder="在此输入被申请人称..."
+                                            oninput="autoResizeTextarea(this)"></textarea>
+                                    </div>
+                                    
+                                    <!-- 四、经审理查明 -->
+                                    <div class="section-editor" data-field="factsFound">
+                                        <div class="flex items-center mb-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded px-2 py-1.5 border-l-4 border-gray-600">
+                                            <span class="w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs mr-2 shadow-sm">四</span>
+                                            <span class="font-semibold text-gray-800 text-xs">经审理查明</span>
+                                        </div>
+                                        <textarea id="globalEditor_factsFound" 
+                                            class="global-editor-textarea w-full p-3 text-sm leading-7 text-gray-800 bg-white border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-hidden"
+                                            style="min-height: 60px; font-family: 'SimSun', '宋体', serif;"
+                                            placeholder="在此输入经审理查明..."
+                                            oninput="autoResizeTextarea(this)"></textarea>
+                                    </div>
+                                    
+                                    <!-- 五、本委认为 -->
+                                    <div class="section-editor" data-field="committeeOpinion">
+                                        <div class="flex items-center mb-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded px-2 py-1.5 border-l-4 border-gray-600">
+                                            <span class="w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs mr-2 shadow-sm">五</span>
+                                            <span class="font-semibold text-gray-800 text-xs">本委认为</span>
+                                        </div>
+                                        <textarea id="globalEditor_committeeOpinion" 
+                                            class="global-editor-textarea w-full p-3 text-sm leading-7 text-gray-800 bg-white border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-hidden"
+                                            style="min-height: 60px; font-family: 'SimSun', '宋体', serif;"
+                                            placeholder="在此输入本委认为..."
+                                            oninput="autoResizeTextarea(this)"></textarea>
+                                    </div>
+                                    
+                                    <!-- 六、终局裁决 -->
+                                    <div class="section-editor" data-field="finalDecision">
+                                        <div class="flex items-center mb-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded px-2 py-1.5 border-l-4 border-gray-600">
+                                            <span class="w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs mr-2 shadow-sm">六</span>
+                                            <span class="font-semibold text-gray-800 text-xs">终局裁决</span>
+                                        </div>
+                                        <textarea id="globalEditor_finalDecision" 
+                                            class="global-editor-textarea w-full p-3 text-sm leading-7 text-gray-800 bg-white border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-hidden"
+                                            style="min-height: 60px; font-family: 'SimSun', '宋体', serif;"
+                                            placeholder="在此输入终局裁决..."
+                                            oninput="autoResizeTextarea(this)"></textarea>
+                                    </div>
+                                    
+                                    <!-- 七、非终局裁决 -->
+                                    <div class="section-editor" data-field="nonFinalDecision">
+                                        <div class="flex items-center mb-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded px-2 py-1.5 border-l-4 border-gray-600">
+                                            <span class="w-5 h-5 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs mr-2 shadow-sm">七</span>
+                                            <span class="font-semibold text-gray-800 text-xs">非终局裁决</span>
+                                        </div>
+                                        <textarea id="globalEditor_nonFinalDecision" 
+                                            class="global-editor-textarea w-full p-3 text-sm leading-7 text-gray-800 bg-white border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-hidden"
+                                            style="min-height: 60px; font-family: 'SimSun', '宋体', serif;"
+                                            placeholder="在此输入非终局裁决..."
+                                            oninput="autoResizeTextarea(this)"></textarea>
+                                    </div>
+                                    
+                                    <!-- 底部留白，方便编辑最后一个字段 -->
+                                    <div style="height: 100px;"></div>
                                 </div>
-                                <div class="mt-8 text-xs text-gray-500">
-                                    <p>本裁决为终局裁决</p>
-                                </div>
-                            </div>
                             </div><!-- /documentPreview -->
                             
                             <!-- 双方观点模式 -->
@@ -556,11 +583,43 @@
                 return;
             }
             
+            // 绑定全局编辑器事件
+            bindGlobalEditors();
+            
             loadData().then(() => {
-                // 页面加载完成后检查是否已有生成的文件
+                // 页面加载完成后初始化全局编辑器高度
+                initGlobalEditorHeights();
+                // 检查是否已有生成的文件
                 checkExistingFiles();
             });
         };
+        
+        // 防抖更新全局编辑器（用于左边字段输入）
+        function debouncedUpdatePreview() {
+            clearTimeout(syncToGlobalTimer);
+            syncToGlobalTimer = setTimeout(() => {
+                updatePreview();
+            }, 200);
+        }
+        
+        // textarea 高度自适应
+        function autoResizeTextarea(textarea) {
+            // 重置高度以获取正确的 scrollHeight
+            textarea.style.height = 'auto';
+            // 设置高度为内容高度
+            const newHeight = Math.max(60, textarea.scrollHeight);
+            textarea.style.height = newHeight + 'px';
+        }
+        
+        // 初始化所有全局编辑器的高度
+        function initGlobalEditorHeights() {
+            for (const globalEditorId of Object.values(GLOBAL_EDITOR_MAP)) {
+                const editor = document.getElementById(globalEditorId);
+                if (editor) {
+                    autoResizeTextarea(editor);
+                }
+            }
+        }
 
         // 加载数据
         async function loadData() {
@@ -1368,51 +1427,86 @@
             }
         }
 
-        // 更新预览
+        // 右边全局编辑器与左边字段的映射
+        const GLOBAL_EDITOR_MAP = {
+            'arbitrationRequest': 'globalEditor_arbitrationRequest',
+            'applicantClaim': 'globalEditor_applicantClaim',
+            'respondentClaim': 'globalEditor_respondentClaim',
+            'factsFound': 'globalEditor_factsFound',
+            'committeeOpinion': 'globalEditor_committeeOpinion',
+            'finalDecision': 'globalEditor_finalDecision',
+            'nonFinalDecision': 'globalEditor_nonFinalDecision'
+        };
+        
+        // 防止循环更新的标志
+        let isUpdatingFromGlobal = false;
+        let isUpdatingToGlobal = false;
+        
+        // 防抖定时器
+        let syncToGlobalTimer = null;
+        let syncFromGlobalTimer = null;
+
+        // 更新右边全局编辑器（从左到右）
         function updatePreview() {
-            const fields = {
-                'arbitrationRequest': 'previewSection1',
-                'applicantClaim': 'previewSection2',
-                'respondentClaim': 'previewSection3',
-                'factsFound': 'previewSection4',
-                'committeeOpinion': 'previewSection5',
-                'finalDecision': 'previewSection6',
-                'nonFinalDecision': 'previewSection7'
-            };
-
-            // 案号
-            const caseNo = document.getElementById('caseNo').value;
-            document.getElementById('previewCaseNo').textContent = caseNo;
-
-            // 更新各段落
-            for (const [inputId, sectionId] of Object.entries(fields)) {
-                const content = document.getElementById(inputId).value;
-                const section = document.getElementById(sectionId);
-                const paragraph = section.querySelector('p');
+            if (isUpdatingFromGlobal) return; // 如果是从全局编辑器触发的更新，跳过
+            
+            isUpdatingToGlobal = true;
+            
+            for (const [fieldId, globalEditorId] of Object.entries(GLOBAL_EDITOR_MAP)) {
+                const field = document.getElementById(fieldId);
+                const globalEditor = document.getElementById(globalEditorId);
                 
-                if (content && content.trim()) {
-                    // 将每行内容单独包裹在div中，确保对齐
-                    const lines = content.split('\n');
-                    paragraph.innerHTML = lines.map(line => 
-                        `<div class="mb-1">${line}</div>`
-                    ).join('');
-                    section.classList.remove('hidden');
-                    setTimeout(() => {
-                        section.classList.remove('opacity-0');
-                    }, 10);
-                } else {
-                    section.classList.add('opacity-0');
-                    setTimeout(() => {
-                        section.classList.add('hidden');
-                    }, 500);
+                if (field && globalEditor && globalEditor.value !== field.value) {
+                    globalEditor.value = field.value;
+                    // 调整高度以适应内容
+                    autoResizeTextarea(globalEditor);
                 }
             }
-
-            // 页脚
-            const hasContent = Object.keys(fields).some(id => 
-                document.getElementById(id).value.trim()
-            );
-            document.getElementById('footerInfo').classList.toggle('hidden', !hasContent);
+            
+            setTimeout(() => { isUpdatingToGlobal = false; }, 50);
+        }
+        
+        // 从右边全局编辑器同步到左边字段（从右到左）
+        function syncFromGlobalEditor(globalEditorId) {
+            if (isUpdatingToGlobal) return; // 如果是更新到全局编辑器触发的，跳过
+            
+            isUpdatingFromGlobal = true;
+            
+            // 找到对应的左边字段
+            let targetFieldId = null;
+            for (const [fieldId, editorId] of Object.entries(GLOBAL_EDITOR_MAP)) {
+                if (editorId === globalEditorId) {
+                    targetFieldId = fieldId;
+                    break;
+                }
+            }
+            
+            if (targetFieldId) {
+                const field = document.getElementById(targetFieldId);
+                const globalEditor = document.getElementById(globalEditorId);
+                
+                if (field && globalEditor && field.value !== globalEditor.value) {
+                    field.value = globalEditor.value;
+                    checkFieldStatus(field);
+                }
+            }
+            
+            setTimeout(() => { isUpdatingFromGlobal = false; }, 50);
+        }
+        
+        // 绑定所有全局编辑器的事件
+        function bindGlobalEditors() {
+            for (const globalEditorId of Object.values(GLOBAL_EDITOR_MAP)) {
+                const editor = document.getElementById(globalEditorId);
+                if (editor) {
+                    editor.addEventListener('input', function() {
+                        clearTimeout(syncFromGlobalTimer);
+                        syncFromGlobalTimer = setTimeout(() => {
+                            syncFromGlobalEditor(globalEditorId);
+                        }, 200);
+                    });
+                }
+            }
         }
 
         // 缩放预览
