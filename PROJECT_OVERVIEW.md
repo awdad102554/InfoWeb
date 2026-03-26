@@ -576,6 +576,11 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-26**: 修复 `get_case_material_files` 函数获取 case_material 的接口：
+  - 原接口调用 `case/caseData` 无法获取到 `case_material` 数据
+  - 改为调用 `arb/{id}/handle` 接口获取 `case_material`（与 `/api/handle/detail` 逻辑一致）
+  - 完善 `case_material` 解析逻辑，支持多层嵌套数据结构
+  - 涉及的文件：`app.py`
 - **2026-03-26**: 一键生成初稿接口添加文件参数：
   - 修改 `/api/award/generate-draft` 接口，自动获取案件材料中的 word/docx 文件 URL
   - 使用 `remote_url` 方式将文件 URL 作为 `files` 参数传递给 Dify Workflow

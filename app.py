@@ -3013,27 +3013,34 @@ def generate_award():
 def get_case_material_files(case_id, auth_headers):
     """
     获取案件材料中的 word/docx 文件的 URL 列表
+    从 arb/{id}/handle 接口获取 case_material（与 /api/handle/detail 一致）
     
     返回:
         list: 文件 URL 列表，格式为 [{"url": "xxx"}, ...]
               如果没有匹配文件则返回空列表
     """
     try:
-        # 1. 获取案件详情中的 case_material
-        detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
-        detail_resp = requests.post(detail_url, headers=auth_headers, json={'id': case_id}, timeout=30)
+        # 1. 从 arb/{id}/handle 接口获取 case_material
+        # 注意：case_material 在 arb/{id}/handle 接口中，不在 case/caseData 中
+        material_url = f"http://10.96.10.78:8080/v1/api/admin/arb/{case_id}/handle"
+        material_resp = requests.get(material_url, headers=auth_headers, timeout=30)
         
-        if detail_resp.status_code != 200:
-            logger.warning(f"获取案件详情失败: {detail_resp.status_code}")
+        if material_resp.status_code != 200:
+            logger.warning(f"获取案件材料失败: {material_resp.status_code}")
             return []
         
-        detail_data = detail_resp.json()
+        material_data = material_resp.json()
         case_material = None
         
-        # 尝试从不同层级获取 case_material
-        if isinstance(detail_data, dict):
-            if 'data' in detail_data and isinstance(detail_data['data'], dict):
-                case_material = detail_data['data'].get('case_material')
+        # 尝试从不同层级获取 case_material（与 /api/handle/detail 逻辑一致）
+        if isinstance(material_data, dict):
+            if 'case_material' in material_data:
+                case_material = material_data['case_material']
+            elif 'data' in material_data and isinstance(material_data['data'], dict):
+                if 'case_material' in material_data['data']:
+                    case_material = material_data['data']['case_material']
+                elif 'data' in material_data['data'] and isinstance(material_data['data']['data'], dict):
+                    case_material = material_data['data']['data'].get('case_material')
         
         # 2. 筛选 file_path 包含 "word" 和 "docx" 的文件
         matched_files = []
@@ -3118,6 +3125,8 @@ def generate_award_draft():
         
         with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
             f.write(f"找到 {len(matched_files)} 个匹配的 word/docx 文件\n")
+            for mf in matched_files:
+                f.write(f"文件URL: {mf.get('url', 'N/A')[:100]}...\n")
         
         # 构建 files 参数（使用 remote_url 方式）
         files_param = []
