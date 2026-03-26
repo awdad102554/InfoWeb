@@ -576,6 +576,13 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-26**: 立案详情接口添加 case_material 数据：
+  - 修改 `/api/handle/detail` 接口，并行调用两个内部API获取数据
+  - 原接口 `case/caseData` 获取案件基本信息
+  - 新增接口 `arb/{id}/handle` 获取 case_material（代理词等材料）
+  - 将 case_material 合并到返回数据的 `data.data.case_material` 字段
+  - 使用 ThreadPoolExecutor 并行请求，避免增加响应时间
+  - 涉及的文件：`app.py`
 - **2026-03-25**: 一键优化功能改进：
   - 添加自定义弹窗 `showOptimizeDialog()`，风格与"自动生成"一致（紫色渐变标题栏）
   - 弹窗包含优化建议输入框、提示信息和操作按钮

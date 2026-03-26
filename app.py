@@ -1787,17 +1787,55 @@ def query_handle_detail():
         
         # 构建内部API URL
         detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
+        # 获取 case_material 的接口
+        material_url = f"http://10.96.10.78:8080/v1/api/admin/arb/{item_id}/handle"
         
         logger.info(f"立案详情查询请求: {detail_url}")
         logger.info(f"  案件ID: {item_id}")
         
-        # 调用内部服务（带认证头，POST方法）
-        response = requests.post(
-            detail_url,
-            headers=headers,
-            json={'id': item_id},
-            timeout=30
-        )
+        # 并行调用两个接口
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        def fetch_case_data():
+            """获取案件详情数据"""
+            resp = requests.post(
+                detail_url,
+                headers=headers,
+                json={'id': item_id},
+                timeout=30
+            )
+            return ('case_data', resp)
+        
+        def fetch_material_data():
+            """获取 case_material 数据"""
+            resp = requests.get(
+                material_url,
+                headers=headers,
+                timeout=30
+            )
+            return ('material', resp)
+        
+        # 执行两个请求
+        case_response = None
+        material_response = None
+        
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(fetch_case_data),
+                executor.submit(fetch_material_data)
+            ]
+            for future in as_completed(futures):
+                try:
+                    data_type, resp = future.result()
+                    if data_type == 'case_data':
+                        case_response = resp
+                    else:
+                        material_response = resp
+                except Exception as e:
+                    logger.error(f"并行请求异常: {e}")
+        
+        # 使用案件详情响应作为主响应
+        response = case_response
         
         # 如果返回401，尝试重新登录后重试
         if response.status_code == 401:
@@ -1826,6 +1864,39 @@ def query_handle_detail():
         # 返回结果
         if response.status_code == 200:
             data = response.json()
+            
+            # 提取并合并 case_material 数据
+            case_material = None
+            if material_response and material_response.status_code == 200:
+                try:
+                    material_data = material_response.json()
+                    # 从 arb/{id}/handle 接口返回的数据中提取 case_material
+                    if isinstance(material_data, dict):
+                        # 尝试从不同层级获取 case_material
+                        if 'case_material' in material_data:
+                            case_material = material_data['case_material']
+                        elif 'data' in material_data and isinstance(material_data['data'], dict):
+                            # 检查 data 层级
+                            if 'case_material' in material_data['data']:
+                                case_material = material_data['data']['case_material']
+                            # 检查 data.data 层级 (arb/{id}/handle 接口的实际结构)
+                            elif 'data' in material_data['data'] and isinstance(material_data['data']['data'], dict):
+                                case_material = material_data['data']['data'].get('case_material')
+                        
+                        if case_material is not None:
+                            logger.info(f"成功获取 case_material，数据条数: {len(case_material) if isinstance(case_material, list) else 'N/A'}")
+                except Exception as e:
+                    logger.error(f"解析 case_material 数据失败: {e}")
+            else:
+                logger.warning(f"获取 case_material 失败，状态码: {material_response.status_code if material_response else 'None'}")
+            
+            # 将 case_material 合并到返回数据中
+            if isinstance(data, dict):
+                if 'data' in data and isinstance(data['data'], dict):
+                    data['data']['case_material'] = case_material
+                else:
+                    data['case_material'] = case_material
+            
             return jsonify({
                 'code': 200,
                 'message': '查询成功',
