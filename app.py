@@ -2922,7 +2922,24 @@ def generate_award():
                     # part3收集所有
                     part3_content = record_json.get('part3', '') or ''
                     if part3_content:
-                        all_records_part3[title] = part3_content
+                        # 键名格式：{title}_20XX年X月X日撰写
+                        # 从 save_path 提取日期
+                        date_match = re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日', save_path)
+                        if date_match:
+                            year, month, day = date_match.groups()
+                            formatted_date = f"{year}年{int(month)}月{int(day)}日"
+                        else:
+                            # 尝试从 created_at 提取
+                            created_at = item.get('created_at', '')
+                            date_match2 = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', created_at)
+                            if date_match2:
+                                year, month, day = date_match2.groups()
+                                formatted_date = f"{year}年{int(month)}月{int(day)}日"
+                            else:
+                                formatted_date = "未知日期"
+                        
+                        key = f"{title}_{formatted_date}撰写"
+                        all_records_part3[key] = part3_content
                 except:
                     pass
         
@@ -2993,6 +3010,63 @@ def generate_award():
         return jsonify({'code': 500, 'message': str(e)}), 500
 
 
+def get_case_material_files(case_id, auth_headers):
+    """
+    获取案件材料中的 word/docx 文件的 URL 列表
+    
+    返回:
+        list: 文件 URL 列表，格式为 [{"url": "xxx"}, ...]
+              如果没有匹配文件则返回空列表
+    """
+    try:
+        # 1. 获取案件详情中的 case_material
+        detail_url = "http://10.96.10.78:8080/v1/api/admin/case/caseData"
+        detail_resp = requests.post(detail_url, headers=auth_headers, json={'id': case_id}, timeout=30)
+        
+        if detail_resp.status_code != 200:
+            logger.warning(f"获取案件详情失败: {detail_resp.status_code}")
+            return []
+        
+        detail_data = detail_resp.json()
+        case_material = None
+        
+        # 尝试从不同层级获取 case_material
+        if isinstance(detail_data, dict):
+            if 'data' in detail_data and isinstance(detail_data['data'], dict):
+                case_material = detail_data['data'].get('case_material')
+        
+        # 2. 筛选 file_path 包含 "word" 和 "docx" 的文件
+        matched_files = []
+        if isinstance(case_material, list):
+            for item in case_material:
+                file_path_str = item.get('file_path', '')
+                if not file_path_str:
+                    continue
+                
+                # 解析 file_path (JSON 字符串)
+                try:
+                    file_info_list = json.loads(file_path_str) if isinstance(file_path_str, str) else file_path_str
+                    if isinstance(file_info_list, list):
+                        for file_info in file_info_list:
+                            url = file_info.get('url', '')
+                            filename = file_info.get('filename', '')
+                            # 检查是否包含 "word" 和 "docx"
+                            if 'word' in url.lower() and 'docx' in url.lower():
+                                matched_files.append({'url': url})
+                            elif 'word' in filename.lower() and 'docx' in filename.lower():
+                                matched_files.append({'url': url})
+                except json.JSONDecodeError:
+                    logger.warning(f"解析 file_path 失败: {file_path_str}")
+                    continue
+        
+        logger.info(f"找到 {len(matched_files)} 个匹配的 word/docx 文件")
+        return matched_files
+        
+    except Exception as e:
+        logger.error(f"获取案件材料文件失败: {e}")
+        return []
+
+
 @app.route('/api/award/generate-draft', methods=['POST'])
 def generate_award_draft():
     """一键生成裁决书初稿 - 直接调用Dify等待结果"""
@@ -3031,6 +3105,28 @@ def generate_award_draft():
         # 调用Dify
         DIFY_API_KEY = "app-OsDtggydgMq4R4NsqH111gBb"
         DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
+        DIFY_USER_ID = f"user-{case_id}-draft"
+        
+        # 获取认证头，用于获取案件材料文件
+        auth_headers = login_manager.get_auth_headers()
+        
+        # 获取案件材料文件的 URL 列表
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            f.write(f"开始获取案件材料文件...\n")
+        
+        matched_files = get_case_material_files(case_id, auth_headers)
+        
+        with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+            f.write(f"找到 {len(matched_files)} 个匹配的 word/docx 文件\n")
+        
+        # 构建 files 参数（使用 remote_url 方式）
+        files_param = []
+        for file_info in matched_files:
+            files_param.append({
+                "transfer_method": "remote_url",
+                "url": file_info['url'],
+                "type": "document"
+            })
         
         payload = {
             "inputs": {
@@ -3038,10 +3134,11 @@ def generate_award_draft():
                 "request": request_content,
                 "material": material,
                 "textPart3": text_part3,
-                "slsj": slsj
+                "slsj": slsj,
+                "files": files_param  # 添加文件参数
             },
             "response_mode": "blocking",
-            "user": f"user-{case_id}-draft"
+            "user": DIFY_USER_ID
         }
         
         with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:

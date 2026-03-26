@@ -2124,6 +2124,8 @@
         }
         
         // 获取庭审笔录的part3内容
+        // 规则：title 包含"开庭笔录"或"庭审笔录"（与后端生成Word的逻辑一致）
+        // 注意：textPart3 只检查 title，不检查 save_path（与 textPart1/textPart2 不同）
         function getCourtRecordPart3() {
             console.log('[AutoGenerate] cachedCaseData:', cachedCaseData ? '有数据' : '无数据');
             
@@ -2136,31 +2138,67 @@
                 return null;
             }
             
-            // 查找开庭笔录或庭审笔录
-            const courtRecord = writingJson.find(item => {
+            // 查找所有 title 包含"开庭笔录"或"庭审笔录"的记录
+            // 注意：与后端一致，textPart3 只检查 title，不检查 save_path
+            const courtRecords = writingJson.filter(item => {
                 const title = item.title || '';
                 return title.includes('开庭笔录') || title.includes('庭审笔录');
             });
             
-            console.log('[AutoGenerate] 找到笔录:', courtRecord ? courtRecord.title : '未找到');
+            console.log('[AutoGenerate] 找到符合条件的笔录数量:', courtRecords.length);
             
-            if (!courtRecord) {
+            if (courtRecords.length === 0) {
                 return null;
             }
             
-            // 从 json 字段中提取 part3
-            const jsonStr = courtRecord.json || '{}';
-            console.log('[AutoGenerate] 笔录json字段长度:', jsonStr.length);
-            
-            try {
-                const recordJson = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
-                const part3 = recordJson.part3 || '';
-                console.log('[AutoGenerate] part3长度:', part3.length);
-                return part3;
-            } catch (e) {
-                console.error('解析笔录json失败:', e);
-                return null;
+            // 收集所有笔录的 part3 内容
+            // 键名格式：{title}_20XX年X月X日撰写（与后端一致）
+            const part3Dict = {};
+            for (const courtRecord of courtRecords) {
+                const title = courtRecord.title || '';
+                const savePath = courtRecord.save_path || '';
+                const jsonStr = courtRecord.json || '{}';
+                
+                try {
+                    const recordJson = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+                    const part3 = recordJson.part3 || '';
+                    if (part3 && part3.trim().length > 0) {
+                        // 从 save_path 提取日期
+                        const dateMatch = savePath.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+                        let formattedDate;
+                        if (dateMatch) {
+                            const [, year, month, day] = dateMatch;
+                            formattedDate = `${year}年${parseInt(month)}月${parseInt(day)}日`;
+                        } else {
+                            // 尝试从 created_at 提取
+                            const createdAt = courtRecord.created_at || '';
+                            const dateMatch2 = createdAt.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+                            if (dateMatch2) {
+                                const [, year, month, day] = dateMatch2;
+                                formattedDate = `${year}年${parseInt(month)}月${parseInt(day)}日`;
+                            } else {
+                                formattedDate = '未知日期';
+                            }
+                        }
+                        
+                        const key = `${title}_${formattedDate}撰写`;
+                        part3Dict[key] = part3;
+                    }
+                } catch (e) {
+                    console.error('解析笔录json失败:', e);
+                    continue;
+                }
             }
+            
+            if (Object.keys(part3Dict).length === 0) {
+                console.log('[AutoGenerate] 所有笔录的part3都为空');
+                return '';
+            }
+            
+            // 与后端一致，返回 JSON 字符串格式
+            const result = JSON.stringify(part3Dict);
+            console.log('[AutoGenerate] textPart3长度:', result.length);
+            return result;
         }
         
         // 显示生成参数输入对话框

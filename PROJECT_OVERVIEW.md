@@ -576,6 +576,11 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-26**: 一键生成初稿接口添加文件参数：
+  - 修改 `/api/award/generate-draft` 接口，自动获取案件材料中的 word/docx 文件 URL
+  - 使用 `remote_url` 方式将文件 URL 作为 `files` 参数传递给 Dify Workflow
+  - 筛选条件：file_path 包含 "word" 和 "docx"
+  - 涉及的文件：`app.py`
 - **2026-03-26**: 立案详情接口添加 case_material 数据：
   - 修改 `/api/handle/detail` 接口，并行调用两个内部API获取数据
   - 原接口 `case/caseData` 获取案件基本信息
