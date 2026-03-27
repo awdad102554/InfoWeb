@@ -148,6 +148,12 @@ def reserve_detail_page():
     return render_template('reserve_detail.html')
 
 
+@app.route('/files/empty.docx')
+def serve_empty_docx():
+    """提供 empty.docx 文件下载，用于一键生成初稿时无可用文件的默认选项"""
+    return send_from_directory('empty_word', 'empty.docx', as_attachment=False)
+
+
 # ============================================
 # 内部API服务（原Info项目）
 # ============================================
@@ -3127,6 +3133,14 @@ def generate_award_draft():
             f.write(f"找到 {len(matched_files)} 个匹配的 word/docx 文件\n")
             for mf in matched_files:
                 f.write(f"文件URL: {mf.get('url', 'N/A')[:100]}...\n")
+        
+        # 如果没有匹配的文件，使用默认 empty.docx 文件
+        if not matched_files:
+            # Dify 访问本服务的 IP 和端口
+            default_file_url = "http://172.17.0.1:5000/files/empty.docx"
+            matched_files = [{'url': default_file_url}]
+            with open('/tmp/debug_generate_draft.log', 'a', encoding='utf-8') as f:
+                f.write(f"未找到匹配文件，使用默认 empty.docx: {default_file_url}\n")
         
         # 构建 files 参数（使用 remote_url 方式）
         files_param = []

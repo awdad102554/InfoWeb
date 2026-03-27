@@ -576,6 +576,15 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-27**: 修复 `empty_word/empty.docx` 文件损坏问题：
+  - 原文件为 0 字节空文件，导致 Dify 解析报错 `File is not a zip file`
+  - 使用 python-docx 重新生成有效的空白 DOCX 文件（36KB，内容为空）
+  - 涉及的文件：`empty_word/empty.docx`
+- **2026-03-27**: 一键生成初稿添加默认文件 fallback 机制：
+  - 当案件没有符合条件的 word/docx 文件时，自动使用 `empty_word/empty.docx` 作为默认文件
+  - 新增路由 `/files/empty.docx` 提供默认文件下载
+  - 使用同样的 `remote_url` 方式上传，Dify 访问地址：`http://172.17.0.1:5000/files/empty.docx`
+  - 涉及的文件：`app.py`
 - **2026-03-26**: 修复 `get_case_material_files` 函数获取 case_material 的接口：
   - 原接口调用 `case/caseData` 无法获取到 `case_material` 数据
   - 改为调用 `arb/{id}/handle` 接口获取 `case_material`（与 `/api/handle/detail` 逻辑一致）
