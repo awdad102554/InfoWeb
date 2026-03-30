@@ -7,7 +7,7 @@ Type=simple
 User=root
 WorkingDirectory=/vol2/1000/python-project/InfoWeb
 Environment="PATH=/vol2/1000/python-project/InfoWeb/venv/bin"
-ExecStart=/vol2/1000/python-project/InfoWeb/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 60 --access-logfile /var/log/infoweb/access.log --error-logfile /var/log/infoweb/error.log app:app
+ExecStart=/vol2/1000/python-project/InfoWeb/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 900 --access-logfile /var/log/infoweb/access.log --error-logfile /var/log/infoweb/error.log app:app
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=always
 RestartSec=5

@@ -1002,28 +1002,40 @@
                 受理时间: document.getElementById('acceptTime').value
             };
             
-            showGeneratingStatus('生成任务已提交，预计需要8-10分钟...');
+            showGeneratingStatus('正在生成Word，预计需要5-15分钟，请耐心等待...');
             
             try {
+                // 使用 AbortController 支持超时（16分钟）
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 960000); // 16分钟
+                
                 const response = await fetch('/api/award/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(data),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 const result = await response.json();
                 
                 if (!response.ok || result.code !== 200) {
-                    throw new Error(result.message || '生成任务提交失败');
+                    throw new Error(result.message || '生成失败');
                 }
                 
-                // 任务完成
                 hideGeneratingStatus();
-                showToast('Word生成成功', 3000);
+                showToast('✅ Word生成成功！', 3000);
+                // 刷新页面显示生成的文件
+                checkExistingFiles();
                 
             } catch (error) {
-                console.error('生成失败:', error);
-                showToast('生成失败: ' + error.message);
+                if (error.name === 'AbortError') {
+                    showToast('生成超时，请稍后刷新页面查看结果');
+                } else {
+                    console.error('生成失败:', error);
+                    showToast('生成失败: ' + error.message);
+                }
                 hideGeneratingStatus();
             }
         }
@@ -1086,7 +1098,7 @@
                 return; // 用户取消
             }
             
-            showGeneratingStatus('正在生成初稿，请稍候...');
+            showGeneratingStatus('正在生成初稿，预计需要5-15分钟，请耐心等待...');
             
             // 获取受理时间并转换为紧凑格式（8位数字）
             const acceptTimeInput = document.getElementById('acceptTime');
@@ -1119,11 +1131,19 @@
                     textPart3: textPart3,
                     slsj: slsj
                 };
+                
+                // 使用 AbortController 支持超时（16分钟）
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 960000); // 16分钟
+                
                 const response = await fetch('/api/award/generate-draft', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify(requestBody),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 const result = await response.json();
                 
@@ -1131,9 +1151,46 @@
                     throw new Error(result.message || '初稿生成失败');
                 }
                 
-                // 任务完成
                 hideGeneratingStatus();
                 showToast('✅ 初稿生成成功！', 3000);
+                
+                // 填充数据库中的裁决书要素到页面输入框
+                if (result.data && result.data.elements) {
+                    const elements = result.data.elements;
+                    
+                    // 填充左侧字段
+                    if (elements['仲裁请求']) {
+                        document.getElementById('arbitrationRequest').value = elements['仲裁请求'];
+                    }
+                    if (elements['申请人称']) {
+                        document.getElementById('applicantClaim').value = elements['申请人称'];
+                    }
+                    if (elements['被申请人称']) {
+                        document.getElementById('respondentClaim').value = elements['被申请人称'];
+                    }
+                    if (elements['经审理查明']) {
+                        document.getElementById('factsFound').value = elements['经审理查明'];
+                    }
+                    if (elements['本委认为']) {
+                        document.getElementById('committeeOpinion').value = elements['本委认为'];
+                    }
+                    if (elements['终局裁决']) {
+                        document.getElementById('finalDecision').value = elements['终局裁决'];
+                    }
+                    if (elements['非终局裁决']) {
+                        document.getElementById('nonFinalDecision').value = elements['非终局裁决'];
+                    }
+                    
+                    // 同步更新右侧全局编辑器
+                    updatePreview();
+                    
+                    // 自动调整所有 textarea 高度
+                    document.querySelectorAll('textarea').forEach(textarea => {
+                        autoResizeTextarea(textarea);
+                    });
+                    
+                    console.log('[GenerateDraft] 已填充数据库裁决书要素到页面');
+                }
                 
                 // 填充 AI 生成的参考信息到隐藏字段
                 if (result.data) {
@@ -1150,8 +1207,12 @@
                 }
                 
             } catch (error) {
-                console.error('生成初稿失败:', error);
-                showToast('生成初稿失败: ' + error.message);
+                if (error.name === 'AbortError') {
+                    showToast('生成超时，请稍后刷新页面查看结果');
+                } else {
+                    console.error('生成初稿失败:', error);
+                    showToast('生成初稿失败: ' + error.message);
+                }
                 hideGeneratingStatus();
             }
         }
@@ -2357,6 +2418,14 @@
             
             return await response.json();
         }
+
+        // 页面卸载时清理轮询定时器
+        window.addEventListener('beforeunload', () => {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        });
 
     </script>
 </body>

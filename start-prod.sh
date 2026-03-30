@@ -42,7 +42,7 @@ echo ""
 exec gunicorn \
     --bind $HOST:$PORT \
     --workers $WORKERS \
-    --timeout 60 \
+    --timeout 900 \
     --access-logfile access.log \
     --error-logfile error.log \
     --capture-output \

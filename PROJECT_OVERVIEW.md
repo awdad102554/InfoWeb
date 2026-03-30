@@ -576,6 +576,16 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-30**: 一键生成初稿后自动填充数据库中的裁决书要素：
+  - 后端 `/api/award/generate-draft` 接口在 Dify 生成成功后，查询数据库 `裁决书要素保存` 表
+  - 返回字段：仲裁请求、申请人称、被申请人称、经审理查明、本委认为、终局裁决、非终局裁决
+  - 前端 `generateDraft()` 函数接收后自动填充到页面输入框，并同步更新右侧预览区
+  - 涉及的文件：`app.py`, `templates/award_make.html`
+- **2026-03-30**: 修复 Gunicorn 超时问题，支持裁决书长时生成：
+  - 问题：Gunicorn timeout 60秒与代码中15分钟超时 mismatch，导致生成Word时超过1分钟报500错误
+  - 解决方案：将 Gunicorn timeout 从 60秒 改为 900秒（15分钟），与代码中的 requests timeout 一致
+  - 清理冗余的异步任务管理代码（threading、_workflow_tasks、pollWorkflowStatus等）
+  - 涉及的文件：`start-prod.sh`, `infoweb.service`, `app.py`, `templates/award_make.html`
 - **2026-03-27**: 修复 `empty_word/empty.docx` 文件损坏问题：
   - 原文件为 0 字节空文件，导致 Dify 解析报错 `File is not a zip file`
   - 使用 python-docx 重新生成有效的空白 DOCX 文件（36KB，内容为空）
