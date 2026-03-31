@@ -3617,10 +3617,11 @@ def build_evidence_files_and_mapping(case_evidence_material, case_detail=None):
             # 从URL中提取原始文件名
             raw_name = url.split('/')[-1] if '/' in url else 'unknown.pdf'
             
-            # 记录映射关系（原始文件名和重命名后的文件名）
+            # 记录映射关系（原始文件名、重命名后的文件名和完整URL）
             filename_mapping.append({
                 "raw_name": raw_name,
-                "display_name": display_name
+                "display_name": display_name,
+                "url": url
             })
             
         except Exception as e:

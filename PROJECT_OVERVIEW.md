@@ -576,6 +576,13 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-03-31**: 添加证据分析功能，优化文件传输方式：
+  - 在裁决书制作页面添加"证据分析"按钮，调用 Dify Workflow 分析证据材料
+  - 新增 `/api/workflow/analyze-evidence` 接口，支持证据材料智能分析
+  - 实现当事人角色自动映射（申请人/被申请人/第三人），根据 applicant_arr/respondent_arr/thirdpartys_arr 自动识别
+  - 文件名格式优化：`{role}_{名称}_{序号}_{material_type}_{object}_{type}`，从 name 字段提取序号
+  - filename_mapping 参数包含：raw_name（原始文件名）、display_name（重命名后）、url（完整URL）
+  - 涉及的文件：`app.py`, `templates/award_make.html`
 - **2026-03-30**: 一键生成初稿后自动填充数据库中的裁决书要素：
   - 后端 `/api/award/generate-draft` 接口在 Dify 生成成功后，查询数据库 `裁决书要素保存` 表
   - 返回字段：仲裁请求、申请人称、被申请人称、经审理查明、本委认为、终局裁决、非终局裁决
