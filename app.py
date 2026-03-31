@@ -3528,44 +3528,27 @@ def build_party_role_map(case_detail):
     return role_map
 
 
-def download_and_rename_evidence_files(case_evidence_material, case_id, case_detail=None, base_url="http://172.17.0.1:5000"):
+def build_evidence_files_and_mapping(case_evidence_material, case_detail=None):
     """
-    下载证据PDF文件并重命名，返回可供Dify访问的本地URL列表
-    
-    参数:
-        case_detail: 案件详情，用于构建当事人role映射
+    构建证据文件列表和文件名映射
     
     返回:
-        list: [{"transfer_method": "remote_url", "url": "...", "type": "document"}, ...]
+        tuple: (evidence_files, filename_mapping)
+        - evidence_files: [{"transfer_method": "remote_url", "url": "原始URL", "type": "document"}, ...]
+        - filename_mapping: [{"raw_name": "原始文件名.pdf", "display_name": "重命名后的文件名"}, ...]
     """
     evidence_files = []
+    filename_mapping = []
     
     # 构建当事人role映射
     role_map = build_party_role_map(case_detail) if case_detail else {}
-    logger.info(f"[DownloadEvidence] 当事人role映射: {role_map}")
-    
-    # 创建证据文件目录
-    evidence_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evidence_files')
-    os.makedirs(evidence_dir, exist_ok=True)
-    
-    # 清理旧文件（可选：保留最近1天的文件）
-    try:
-        from datetime import datetime, timedelta
-        for filename in os.listdir(evidence_dir):
-            filepath = os.path.join(evidence_dir, filename)
-            if os.path.isfile(filepath):
-                file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-                if datetime.now() - file_mtime > timedelta(days=1):
-                    os.remove(filepath)
-                    logger.info(f"[DownloadEvidence] 清理旧文件: {filename}")
-    except Exception as e:
-        logger.warning(f"[DownloadEvidence] 清理旧文件失败: {e}")
+    logger.info(f"[BuildEvidence] 当事人role映射: {role_map}")
     
     if not isinstance(case_evidence_material, list):
-        logger.warning(f"[DownloadEvidence] case_evidence_material 不是列表: {type(case_evidence_material)}")
-        return evidence_files
+        logger.warning(f"[BuildEvidence] case_evidence_material 不是列表: {type(case_evidence_material)}")
+        return evidence_files, filename_mapping
     
-    logger.info(f"[DownloadEvidence] 处理 {len(case_evidence_material)} 条证据材料记录")
+    logger.info(f"[BuildEvidence] 处理 {len(case_evidence_material)} 条证据材料记录")
     
     # 用于记录每个role的证据序号计数器（基于原始顺序，非PDF也计数）
     role_counter = {}
@@ -3597,8 +3580,7 @@ def download_and_rename_evidence_files(case_evidence_material, case_id, case_det
             if not url:
                 continue
             
-            # 构建重命名后的文件名（使用之前计算的no，包含非PDF证据的序号）
-            submitter = item.get('submitter', '未知提交人')
+            # 构建重命名后的文件名
             name = item.get('name', '未知名称')
             material_type = item.get('material_type', '未知类型')
             object_name = item.get('object', '未知对象')
@@ -3606,47 +3588,33 @@ def download_and_rename_evidence_files(case_evidence_material, case_id, case_det
             def clean_filename(s):
                 return re.sub(r'[\\/:*?"<>|]', '_', str(s))
             
-            # 文件名格式: {role}_{name}_{material_type}_{object}_{no}.pdf
-            new_filename = f"{clean_filename(role)}_{clean_filename(name)}_{clean_filename(material_type)}_{clean_filename(object_name)}_{no}.pdf"
+            # 文件名格式: {role}_{name}_{material_type}_{object}_证据{no}（无后缀）
+            display_name = f"{clean_filename(role)}_{clean_filename(name)}_{clean_filename(material_type)}_{clean_filename(object_name)}_证据{no}"
             
-            local_path = os.path.join(evidence_dir, new_filename)
+            logger.info(f"[BuildEvidence] 添加文件: {display_name} -> {url[:80]}...")
             
-            # 下载文件
-            logger.info(f"[DownloadEvidence] 下载文件: {url} -> {new_filename}")
-            
-            # 使用外部API的认证头下载文件
-            auth_headers = login_manager.get_auth_headers()
-            
-            download_resp = requests.get(url, headers=auth_headers, timeout=60, stream=True)
-            
-            if download_resp.status_code != 200:
-                logger.warning(f"[DownloadEvidence] 下载失败 {download_resp.status_code}: {url}")
-                continue
-            
-            # 保存到本地
-            with open(local_path, 'wb') as f:
-                for chunk in download_resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            file_size = os.path.getsize(local_path)
-            logger.info(f"[DownloadEvidence] 下载完成: {new_filename}, 大小: {file_size} bytes")
-            
-            # 构建Dify可访问的URL（通过Flask服务）
-            file_url = f"{base_url}/files/evidence/{new_filename}"
-            
+            # 使用原始URL（10.96.10.78:8080）
             evidence_files.append({
                 "transfer_method": "remote_url",
-                "url": file_url,
+                "url": url,
                 "type": "document"
             })
             
+            # 从URL中提取原始文件名
+            raw_name = url.split('/')[-1] if '/' in url else 'unknown.pdf'
+            
+            # 记录映射关系（原始文件名和重命名后的文件名）
+            filename_mapping.append({
+                "raw_name": raw_name,
+                "display_name": display_name
+            })
+            
         except Exception as e:
-            logger.warning(f"[DownloadEvidence] 处理证据文件失败: {e}")
+            logger.warning(f"[BuildEvidence] 处理证据文件失败: {e}")
             continue
     
-    logger.info(f"[DownloadEvidence] 共下载 {len(evidence_files)} 个PDF证据文件")
-    return evidence_files
+    logger.info(f"[BuildEvidence] 共处理 {len(evidence_files)} 个PDF证据文件")
+    return evidence_files, filename_mapping
 
 
 @app.route('/api/workflow/analyze-evidence', methods=['POST'])
@@ -3763,27 +3731,29 @@ def analyze_evidence():
                     elif 'data' in material_data['data'] and isinstance(material_data['data']['data'], dict):
                         case_evidence_material = material_data['data']['data'].get('case_evidence_material')
         
-        # 下载并重命名证据文件，获取本地URL列表（Dify通过172.17.0.1:5000访问）
-        evidence_files = download_and_rename_evidence_files(
-            case_evidence_material, 
-            case_id,
-            case_detail=case_detail,
-            base_url="http://172.17.0.1:5000"
+        # 构建证据文件列表和文件名映射（使用原始URL，不再下载）
+        evidence_files, filename_mapping = build_evidence_files_and_mapping(
+            case_evidence_material,
+            case_detail=case_detail
         )
         
         if not evidence_files:
-            return jsonify({'code': 400, 'message': '未找到PDF格式的证据材料或下载失败'}), 400
+            return jsonify({'code': 400, 'message': '未找到PDF格式的证据材料'}), 400
         
         # ========== 4. 调用Dify Workflow ==========
         DIFY_API_KEY = "app-z6fLFQnv0c9VFnz9LtX0gWt5"
         DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
         DIFY_USER_ID = f"user-{case_id}-evidence"
         
+        # filename_mapping 转为 JSON 字符串
+        filename_mapping_json = json.dumps(filename_mapping, ensure_ascii=False)
+        
         payload = {
             "inputs": {
                 "numb": bianhao,
                 "textPart3": text_part3,
-                "evidence": evidence_files
+                "evidence": evidence_files,
+                "filename_mapping": filename_mapping_json
             },
             "response_mode": "blocking",
             "user": DIFY_USER_ID
