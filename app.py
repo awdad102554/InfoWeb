@@ -3584,12 +3584,26 @@ def build_evidence_files_and_mapping(case_evidence_material, case_detail=None):
             name = item.get('name', '未知名称')
             material_type = item.get('material_type', '未知类型')
             object_name = item.get('object', '未知对象')
+            evidence_type = item.get('type', '')  # 证据类型，如"书证"
             
             def clean_filename(s):
                 return re.sub(r'[\\/:*?"<>|]', '_', str(s))
             
-            # 文件名格式: {role}_{name}_{material_type}_{object}_证据{no}（无后缀）
-            display_name = f"{clean_filename(role)}_{clean_filename(name)}_{clean_filename(material_type)}_{clean_filename(object_name)}_证据{no}"
+            # 从name中提取序号（格式: {名称}_{序号}）
+            # 如果name中有下划线，取最后一部分作为序号
+            if '_' in name:
+                parts = name.rsplit('_', 1)
+                name_without_number = parts[0]
+                number = parts[1]
+            else:
+                name_without_number = name
+                number = "未知"
+            
+            # 文件名格式: {role}_{名称}_{序号}_{material_type}_{object}_{type}（无后缀）
+            if evidence_type:
+                display_name = f"{clean_filename(role)}_{clean_filename(name_without_number)}_{clean_filename(number)}_{clean_filename(material_type)}_{clean_filename(object_name)}_{clean_filename(evidence_type)}"
+            else:
+                display_name = f"{clean_filename(role)}_{clean_filename(name_without_number)}_{clean_filename(number)}_{clean_filename(material_type)}_{clean_filename(object_name)}"
             
             logger.info(f"[BuildEvidence] 添加文件: {display_name} -> {url[:80]}...")
             
