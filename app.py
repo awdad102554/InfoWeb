@@ -154,6 +154,13 @@ def serve_empty_docx():
     return send_from_directory('empty_word', 'empty.docx', as_attachment=False)
 
 
+@app.route('/files/evidence/<path:filename>')
+def serve_evidence_file(filename):
+    """提供证据文件下载，用于Dify访问"""
+    evidence_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evidence_files')
+    return send_from_directory(evidence_dir, filename, as_attachment=False)
+
+
 # ============================================
 # 内部API服务（原Info项目）
 # ============================================
@@ -2904,11 +2911,13 @@ def generate_award():
         case_data = response.json()
         data_content = case_data.get('data', {})
         if isinstance(data_content, list) and len(data_content) > 0:
-            case_detail = data_content[0]
-        else:
+            case_detail = data_content[0] if isinstance(data_content[0], dict) else {}
+        elif isinstance(data_content, dict):
             case_detail = data_content
+        else:
+            case_detail = {}
         
-        writing_json = case_detail.get('writing_json', [])
+        writing_json = case_detail.get('writing_json', []) if isinstance(case_detail, dict) else []
         
         # 提取笔录内容
         text_part1 = ''
@@ -3475,6 +3484,352 @@ def optimize_text_workflow():
             'content': None,
             'message': f'优化失败: {str(e)}'
         }), 500
+
+
+def build_party_role_map(case_detail):
+    """
+    根据案件详情构建当事人role映射
+    返回: {submitter_name: role}
+    """
+    role_map = {}
+    
+    # 处理申请人
+    applicant_arr = case_detail.get('applicant_arr', []) if isinstance(case_detail, dict) else []
+    if isinstance(applicant_arr, list):
+        if len(applicant_arr) == 1:
+            role_map[applicant_arr[0].get('name', '')] = "申请人"
+        else:
+            for idx, app in enumerate(applicant_arr, 1):
+                role_map[app.get('name', '')] = f"申请人{idx}"
+    
+    # 处理被申请人
+    respondent_arr = case_detail.get('respondent_arr', []) if isinstance(case_detail, dict) else []
+    if isinstance(respondent_arr, list):
+        if len(respondent_arr) == 1:
+            role_map[respondent_arr[0].get('name', '')] = "被申请人"
+        else:
+            for idx, resp in enumerate(respondent_arr, 1):
+                role_map[resp.get('name', '')] = f"被申请人{idx}"
+    
+    # 处理第三人（支持 thirdparty_arr 和 thirdpartys_arr 两种字段名）
+    thirdparty_arr = case_detail.get('thirdparty_arr', []) if isinstance(case_detail, dict) else []
+    thirdpartys_arr = case_detail.get('thirdpartys_arr', []) if isinstance(case_detail, dict) else []
+    
+    # 优先使用 thirdpartys_arr，如果不存在则使用 thirdparty_arr
+    third_parties = thirdpartys_arr if thirdpartys_arr else thirdparty_arr
+    
+    if isinstance(third_parties, list):
+        if len(third_parties) == 1:
+            role_map[third_parties[0].get('name', '')] = "第三人"
+        else:
+            for idx, third in enumerate(third_parties, 1):
+                role_map[third.get('name', '')] = f"第三人{idx}"
+    
+    return role_map
+
+
+def download_and_rename_evidence_files(case_evidence_material, case_id, case_detail=None, base_url="http://172.17.0.1:5000"):
+    """
+    下载证据PDF文件并重命名，返回可供Dify访问的本地URL列表
+    
+    参数:
+        case_detail: 案件详情，用于构建当事人role映射
+    
+    返回:
+        list: [{"transfer_method": "remote_url", "url": "...", "type": "document"}, ...]
+    """
+    evidence_files = []
+    
+    # 构建当事人role映射
+    role_map = build_party_role_map(case_detail) if case_detail else {}
+    logger.info(f"[DownloadEvidence] 当事人role映射: {role_map}")
+    
+    # 创建证据文件目录
+    evidence_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evidence_files')
+    os.makedirs(evidence_dir, exist_ok=True)
+    
+    # 清理旧文件（可选：保留最近1天的文件）
+    try:
+        from datetime import datetime, timedelta
+        for filename in os.listdir(evidence_dir):
+            filepath = os.path.join(evidence_dir, filename)
+            if os.path.isfile(filepath):
+                file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                if datetime.now() - file_mtime > timedelta(days=1):
+                    os.remove(filepath)
+                    logger.info(f"[DownloadEvidence] 清理旧文件: {filename}")
+    except Exception as e:
+        logger.warning(f"[DownloadEvidence] 清理旧文件失败: {e}")
+    
+    if not isinstance(case_evidence_material, list):
+        logger.warning(f"[DownloadEvidence] case_evidence_material 不是列表: {type(case_evidence_material)}")
+        return evidence_files
+    
+    logger.info(f"[DownloadEvidence] 处理 {len(case_evidence_material)} 条证据材料记录")
+    
+    # 用于记录每个role的证据序号计数器（基于原始顺序，非PDF也计数）
+    role_counter = {}
+    
+    for idx, item in enumerate(case_evidence_material):
+        file_path_str = item.get('file_path', '')
+        if not file_path_str:
+            continue
+        
+        # 获取submitter并计算序号（在检查PDF之前，确保所有证据都计数）
+        submitter = item.get('submitter', '未知提交人')
+        role = role_map.get(submitter, submitter)
+        role_counter[role] = role_counter.get(role, 0) + 1
+        no = role_counter[role]
+        
+        # 检查是否为PDF文件
+        if '.pdf' not in file_path_str.lower():
+            continue
+        
+        try:
+            # 解析 file_path
+            file_info_list = json.loads(file_path_str) if isinstance(file_path_str, str) else file_path_str
+            if not isinstance(file_info_list, list) or len(file_info_list) == 0:
+                continue
+            
+            file_info = file_info_list[0]
+            url = file_info.get('url', '')
+            
+            if not url:
+                continue
+            
+            # 构建重命名后的文件名（使用之前计算的no，包含非PDF证据的序号）
+            submitter = item.get('submitter', '未知提交人')
+            name = item.get('name', '未知名称')
+            material_type = item.get('material_type', '未知类型')
+            object_name = item.get('object', '未知对象')
+            
+            def clean_filename(s):
+                return re.sub(r'[\\/:*?"<>|]', '_', str(s))
+            
+            # 文件名格式: {role}_{name}_{material_type}_{object}_{no}.pdf
+            new_filename = f"{clean_filename(role)}_{clean_filename(name)}_{clean_filename(material_type)}_{clean_filename(object_name)}_{no}.pdf"
+            
+            local_path = os.path.join(evidence_dir, new_filename)
+            
+            # 下载文件
+            logger.info(f"[DownloadEvidence] 下载文件: {url} -> {new_filename}")
+            
+            # 使用外部API的认证头下载文件
+            auth_headers = login_manager.get_auth_headers()
+            
+            download_resp = requests.get(url, headers=auth_headers, timeout=60, stream=True)
+            
+            if download_resp.status_code != 200:
+                logger.warning(f"[DownloadEvidence] 下载失败 {download_resp.status_code}: {url}")
+                continue
+            
+            # 保存到本地
+            with open(local_path, 'wb') as f:
+                for chunk in download_resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            file_size = os.path.getsize(local_path)
+            logger.info(f"[DownloadEvidence] 下载完成: {new_filename}, 大小: {file_size} bytes")
+            
+            # 构建Dify可访问的URL（通过Flask服务）
+            file_url = f"{base_url}/files/evidence/{new_filename}"
+            
+            evidence_files.append({
+                "transfer_method": "remote_url",
+                "url": file_url,
+                "type": "document"
+            })
+            
+        except Exception as e:
+            logger.warning(f"[DownloadEvidence] 处理证据文件失败: {e}")
+            continue
+    
+    logger.info(f"[DownloadEvidence] 共下载 {len(evidence_files)} 个PDF证据文件")
+    return evidence_files
+
+
+@app.route('/api/workflow/analyze-evidence', methods=['POST'])
+def analyze_evidence():
+    """
+    证据分析工作流
+    调用Dify Workflow分析案件证据材料
+    
+    Dify Key: app-z6fLFQnv0c9VFnz9LtX0gWt5
+    参数:
+    - numb: 案号编号（如2025432）
+    - textPart3: 庭审笔录内容
+    - evidence: PDF证据文件列表（下载后重命名，通过本地URL访问）
+    """
+    try:
+        data = request.get_json() or {}
+        case_id = data.get('case_id', '')
+        case_no = data.get('case_no', '')
+        
+        if not case_id:
+            return jsonify({'code': 400, 'message': '缺少案件ID'}), 400
+        
+        logger.info(f"[AnalyzeEvidence] 收到请求: case_id={case_id}, case_no={case_no}")
+        
+        # 获取认证头
+        if not login_manager.check_and_renew_login():
+            return jsonify({'code': 401, 'message': '登录失败'}), 401
+        
+        headers = login_manager.get_auth_headers()
+        
+        # ========== 1. 获取庭审笔录 textPart3 ==========
+        response = requests.post(
+            "http://10.96.10.78:8080/v1/api/admin/case/caseData",
+            headers=headers,
+            json={'id': case_id},
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'code': 500, 'message': '获取案件详情失败'}), 500
+        
+        case_data = response.json()
+        data_content = case_data.get('data', {})
+        if isinstance(data_content, list) and len(data_content) > 0:
+            case_detail = data_content[0] if isinstance(data_content[0], dict) else {}
+        elif isinstance(data_content, dict):
+            case_detail = data_content
+        else:
+            case_detail = {}
+        
+        writing_json = case_detail.get('writing_json', []) if isinstance(case_detail, dict) else []
+        
+        # 提取textPart3（和生成word一样的逻辑）
+        all_records_part3 = {}
+        for item in writing_json:
+            title = item.get('title', '')
+            save_path = item.get('save_path', '')
+            if '开庭笔录' in title or '庭审笔录' in title:
+                json_str = item.get('json', '{}')
+                try:
+                    record_json = json.loads(json_str) if isinstance(json_str, str) else json_str
+                    part3_content = record_json.get('part3', '') or ''
+                    if part3_content:
+                        # 提取日期
+                        date_match = re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日', save_path)
+                        if date_match:
+                            year, month, day = date_match.groups()
+                            formatted_date = f"{year}年{int(month)}月{int(day)}日"
+                        else:
+                            created_at = item.get('created_at', '')
+                            date_match2 = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', created_at)
+                            if date_match2:
+                                year, month, day = date_match2.groups()
+                                formatted_date = f"{year}年{int(month)}月{int(day)}日"
+                            else:
+                                formatted_date = "未知日期"
+                        
+                        key = f"{title}_{formatted_date}撰写"
+                        all_records_part3[key] = part3_content
+                except:
+                    pass
+        
+        text_part3 = json.dumps(all_records_part3, ensure_ascii=False) if all_records_part3 else ''
+        
+        if not text_part3:
+            return jsonify({'code': 400, 'message': '未找到庭审笔录内容'}), 400
+        
+        # ========== 2. 提取案号编号 numb ==========
+        bianhao = case_id
+        if case_no:
+            match = re.search(r'\[(\d{4})\](\d+)', case_no)
+            if match:
+                bianhao = f"{match.group(1)}{match.group(2)}"
+        
+        logger.info(f"[AnalyzeEvidence] numb={bianhao}")
+        
+        # ========== 3. 获取并下载证据材料 PDF 文件 ==========
+        # 从 arb/{id}/handle 接口获取 case_evidence_material
+        material_url = f"http://10.96.10.78:8080/v1/api/admin/arb/{case_id}/handle"
+        material_resp = requests.get(material_url, headers=headers, timeout=30)
+        
+        case_evidence_material = None
+        
+        if material_resp.status_code == 200:
+            material_data = material_resp.json()
+            
+            # 尝试从不同层级获取 case_evidence_material
+            if isinstance(material_data, dict):
+                if 'case_evidence_material' in material_data:
+                    case_evidence_material = material_data['case_evidence_material']
+                elif 'data' in material_data and isinstance(material_data['data'], dict):
+                    if 'case_evidence_material' in material_data['data']:
+                        case_evidence_material = material_data['data']['case_evidence_material']
+                    elif 'data' in material_data['data'] and isinstance(material_data['data']['data'], dict):
+                        case_evidence_material = material_data['data']['data'].get('case_evidence_material')
+        
+        # 下载并重命名证据文件，获取本地URL列表（Dify通过172.17.0.1:5000访问）
+        evidence_files = download_and_rename_evidence_files(
+            case_evidence_material, 
+            case_id,
+            case_detail=case_detail,
+            base_url="http://172.17.0.1:5000"
+        )
+        
+        if not evidence_files:
+            return jsonify({'code': 400, 'message': '未找到PDF格式的证据材料或下载失败'}), 400
+        
+        # ========== 4. 调用Dify Workflow ==========
+        DIFY_API_KEY = "app-z6fLFQnv0c9VFnz9LtX0gWt5"
+        DIFY_BASE_URL = "http://127.0.0.1:8020/v1"
+        DIFY_USER_ID = f"user-{case_id}-evidence"
+        
+        payload = {
+            "inputs": {
+                "numb": bianhao,
+                "textPart3": text_part3,
+                "evidence": evidence_files
+            },
+            "response_mode": "blocking",
+            "user": DIFY_USER_ID
+        }
+        
+        logger.info(f"[AnalyzeEvidence] 开始调用Dify，证据文件数: {len(evidence_files)}")
+        
+        # 设置15分钟超时
+        resp = requests.post(
+            f"{DIFY_BASE_URL}/workflows/run",
+            headers={"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=900
+        )
+        
+        if resp.status_code != 200:
+            error_text = resp.text[:500]
+            logger.error(f"[AnalyzeEvidence] Dify错误: status={resp.status_code}, response={error_text}")
+            return jsonify({'code': 500, 'message': f'Dify错误:{resp.status_code}'}), 500
+        
+        result = resp.json()
+        logger.info(f"[AnalyzeEvidence] Dify返回成功")
+        
+        # 提取返回结果
+        result_data = result.get('data', {})
+        outputs = result_data.get('outputs', {})
+        
+        return jsonify({
+            'code': 200,
+            'success': True,
+            'message': '证据分析完成',
+            'data': {
+                'outputs': outputs,
+                'task_id': result.get('task_id', 'N/A'),
+                'evidence_count': len(evidence_files)
+            }
+        })
+        
+    except requests.exceptions.Timeout:
+        logger.error("[AnalyzeEvidence] Dify调用超时（超过15分钟）")
+        return jsonify({'code': 504, 'message': '分析超时（超过15分钟），请稍后重试'}), 504
+    except Exception as e:
+        logger.error(f"[AnalyzeEvidence] 异常: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'code': 500, 'message': str(e)}), 500
 
 
 @app.route('/api/award/status/<case_id>', methods=['GET'])
