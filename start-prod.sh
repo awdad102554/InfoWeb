@@ -20,7 +20,7 @@ fi
 
 # 获取CPU核心数用于设置worker数量
 WORKERS=${WORKERS:-4}
-PORT=${PORT:-5000}
+PORT=${PORT:-5001}
 HOST=${HOST:-0.0.0.0}
 
 echo "========================================"

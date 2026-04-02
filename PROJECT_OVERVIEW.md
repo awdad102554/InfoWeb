@@ -576,6 +576,13 @@ curl -X POST http://localhost:5000/api/doc_templates/generate \
 
 ## 十三、关键文件修改历史
 
+- **2026-04-02**: 配置 HTTPS 服务，使用非特权端口 5443：
+  - Nginx 监听 5443 端口提供 HTTPS 服务
+  - Gunicorn 保持 5000 端口（HTTP）
+  - 使用自签名证书 hailiangjeff.top.pem/key
+  - 优势：无需 root 权限，普通用户可访问
+  - 访问地址：`https://hailiangjeff.top:5443`
+  - 涉及的文件：`start-prod.sh`, Nginx 配置
 - **2026-03-31**: 添加证据分析功能，优化文件传输方式：
   - 在裁决书制作页面添加"证据分析"按钮，调用 Dify Workflow 分析证据材料
   - 新增 `/api/workflow/analyze-evidence` 接口，支持证据材料智能分析
