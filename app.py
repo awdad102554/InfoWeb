@@ -48,6 +48,10 @@ from config import Config
 from login_manager import get_login_manager
 from company_query import get_company_query
 from id_card_query import get_id_card_query_manager
+
+# 休假日缓存 { '202602': [23, 24, ...] }
+_holiday_cache = {}
+_holiday_cache_month = None
 from database import get_db_manager
 
 # 配置日志
@@ -315,6 +319,160 @@ def query_id_card():
         
     except Exception as e:
         logger.error(f"查询身份证信息接口错误: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'服务器错误: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/datashare/query', methods=['POST'])
+def datashare_query():
+    """
+    数据共享查询接口
+    支持三种查询类型：
+    1. idcard - 身份证信息查询 (参数: id_number)
+    2. company - 企业信息查询 (参数: company_name 或 credit_code)
+    3. office - 机关单位信息查询 (参数: office_name)
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'type' not in data:
+            return jsonify({
+                'code': 400,
+                'message': '缺少参数: type (查询类型: idcard/company/office)',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        query_type = data['type']
+        
+        # 检查并续期登录状态
+        if not login_manager.check_and_renew_login():
+            return jsonify({
+                'code': 401,
+                'message': '登录失败，无法查询数据',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 401
+        
+        headers = login_manager.get_auth_headers()
+        
+        if query_type == 'idcard':
+            # 身份证信息查询
+            id_number = data.get('id_number')
+            if not id_number:
+                return jsonify({
+                    'code': 400,
+                    'message': '缺少参数: id_number (身份证号码)',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 400
+            
+            logger.info(f"数据共享-身份证查询: {id_number}")
+            
+            # 调用身份证查询接口
+            id_card_query_manager = get_id_card_query_manager()
+            query_result = id_card_query_manager.query_id_card(id_number)
+            
+            return jsonify({
+                'code': query_result['code'],
+                'message': query_result['message'],
+                'data': query_result.get('data'),
+                'source': query_result.get('source', 'api'),
+                'timestamp': datetime.now().isoformat()
+            })
+            
+        elif query_type == 'company':
+            # 企业信息查询
+            company_name = data.get('company_name')
+            credit_code = data.get('credit_code')
+            
+            if not company_name and not credit_code:
+                return jsonify({
+                    'code': 400,
+                    'message': '缺少参数: company_name 或 credit_code',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 400
+            
+            query_key = company_name or credit_code
+            logger.info(f"数据共享-企业查询: {query_key}")
+            
+            # 调用企业查询接口
+            company_query = get_company_query()
+            
+            if credit_code:
+                # 按统一社会信用代码查询
+                query_result = company_query.query_company_by_credit_code(credit_code)
+            else:
+                # 按企业名称查询
+                query_result = company_query.query_company_info(company_name, exact_match=True)
+            
+            return jsonify({
+                'code': query_result['code'],
+                'message': query_result['message'],
+                'data': query_result.get('data'),
+                'source': query_result.get('source', 'api'),
+                'timestamp': datetime.now().isoformat()
+            })
+            
+        elif query_type == 'office':
+            # 机关单位信息查询
+            office_name = data.get('office_name')
+            if not office_name:
+                return jsonify({
+                    'code': 400,
+                    'message': '缺少参数: office_name (机关单位名称)',
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                }), 400
+            
+            logger.info(f"数据共享-机关单位查询: {office_name}")
+            
+            # 调用机关单位查询接口
+            url = "http://10.96.10.78:8080/v1/api/admin/datashare/openPlatformProxy/api/SJCK_officeUnitInfo"
+            payload = {"JGMC": office_name}
+            
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get('code') == 200:
+                return jsonify({
+                    'code': 200,
+                    'message': '查询成功',
+                    'data': result.get('data'),
+                    'source': 'api',
+                    'timestamp': datetime.now().isoformat()
+                })
+            else:
+                return jsonify({
+                    'code': result.get('code', 500),
+                    'message': result.get('message', '查询失败'),
+                    'data': None,
+                    'timestamp': datetime.now().isoformat()
+                })
+        else:
+            return jsonify({
+                'code': 400,
+                'message': f'不支持的查询类型: {query_type}',
+                'data': None,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"数据共享查询请求失败: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f'查询请求失败: {str(e)}',
+            'data': None,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        logger.error(f"数据共享查询接口错误: {str(e)}")
         return jsonify({
             'code': 500,
             'message': f'服务器错误: {str(e)}',
@@ -3336,6 +3494,270 @@ def generate_claim_workflow():
         return jsonify({
             'success': False,
             'content': None,
+            'message': f'生成失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/holiday/list', methods=['GET'])
+def get_holiday_list():
+    """
+    获取休假日列表
+    参数: yearMonth (格式: YYYYMM, 如 202602)
+    """
+    try:
+        year_month = request.args.get('yearMonth', '')
+        if not year_month or len(year_month) != 6 or not year_month.isdigit():
+            return jsonify({
+                'success': False,
+                'message': '参数错误: yearMonth 格式应为 YYYYMM (如 202602)'
+            }), 400
+        
+        global _holiday_cache, _holiday_cache_month
+        
+        # 检查缓存
+        if _holiday_cache_month == year_month and year_month in _holiday_cache:
+            return jsonify({
+                'success': True,
+                'message': '查询成功(缓存)',
+                'data': _holiday_cache[year_month]
+            })
+        
+        # 检查登录状态
+        if not login_manager.check_and_renew_login():
+            return jsonify({
+                'success': False,
+                'message': '登录失败，无法查询休假日'
+            }), 401
+        
+        headers = login_manager.get_auth_headers()
+        if not headers:
+            return jsonify({
+                'success': False,
+                'message': '获取认证信息失败'
+            }), 401
+        
+        url = f"http://10.96.10.78:8080/v1/api/admin/holidayList?date={year_month}"
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        
+        if result.get('code') == 200:
+            # 解析休假日数据
+            holidays = result.get('data', {}).get('holiaya', [])
+            # 提取日期中的日份 (20260223 -> 23)
+            holiday_days = []
+            for h in holidays:
+                date_str = h.get('date', '')
+                if len(date_str) == 8:
+                    try:
+                        day = int(date_str[6:8])
+                        holiday_days.append(day)
+                    except:
+                        pass
+            
+            # 更新缓存
+            _holiday_cache = { year_month: holiday_days }
+            _holiday_cache_month = year_month
+            
+            return jsonify({
+                'success': True,
+                'message': '查询成功',
+                'data': holiday_days
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': result.get('message', '查询休假日失败')
+            }), 500
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"休假日查询请求失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'查询请求失败: {str(e)}'
+        }), 500
+    except Exception as e:
+        logger.error(f"休假日查询接口错误: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'服务器错误: {str(e)}'
+        }), 500
+
+
+@app.route('/api/internship/sign', methods=['POST'])
+def generate_internship_sign():
+    """
+    生成见习签到表
+    接收年月和见习人员列表，生成Word文档
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': '请求数据为空'
+            }), 400
+        
+        year = data.get('year')
+        month = data.get('month')
+        persons = data.get('persons', [])
+        
+        if not year or not month:
+            return jsonify({
+                'success': False,
+                'message': '请选择年份和月份'
+            }), 400
+        
+        if not persons or len(persons) == 0:
+            return jsonify({
+                'success': False,
+                'message': '请至少添加一名见习人员'
+            }), 400
+        
+        # 使用python-docx生成Word文档
+        from docx import Document
+        from docx.shared import Pt, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+        
+        doc = Document()
+        
+        # 设置中文字体
+        doc.styles['Normal'].font.name = '宋体'
+        doc.styles['Normal']._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+        doc.styles['Normal'].font.size = Pt(12)
+        
+        # 计算该月天数
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        
+        # 为每个人员生成签到表
+        for idx, person in enumerate(persons):
+            name = person.get('name', '')
+            start_date = person.get('startDate', '')
+            end_date = person.get('endDate', '')
+            
+            if idx > 0:
+                doc.add_page_break()
+            
+            # 添加标题
+            title = doc.add_paragraph()
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = title.add_run('劳动仲裁见习签到表')
+            run.font.name = '黑体'
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+            run.font.size = Pt(18)
+            run.font.bold = True
+            
+            doc.add_paragraph()
+            
+            # 添加基本信息
+            info = doc.add_paragraph()
+            info.add_run(f'见习人员：{name}').font.size = Pt(12)
+            info.add_run(f'    见习期间：{start_date} 至 {end_date}').font.size = Pt(12)
+            
+            doc.add_paragraph()
+            
+            # 生成每日签到表格
+            # 计算日期范围内的天数
+            try:
+                from datetime import datetime, timedelta
+                start = datetime.strptime(start_date, '%Y-%m-%d')
+                end = datetime.strptime(end_date, '%Y-%m-%d')
+                
+                # 添加签到表格（7列：日期、上午签到、上午签退、下午签到、下午签退、备注）
+                table = doc.add_table(rows=1, cols=6)
+                table.style = 'Table Grid'
+                
+                # 设置表头
+                hdr_cells = table.rows[0].cells
+                headers = ['日期', '上午签到', '上午签退', '下午签到', '下午签退', '备注']
+                for i, header in enumerate(headers):
+                    hdr_cells[i].text = header
+                    for paragraph in hdr_cells[i].paragraphs:
+                        for run in paragraph.runs:
+                            run.font.bold = True
+                            run.font.name = '宋体'
+                            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+                            run.font.size = Pt(11)
+                
+                # 填充日期行
+                current = start
+                while current <= end:
+                    date_str = current.strftime('%Y-%m-%d')
+                    weekday = ['一', '二', '三', '四', '五', '六', '日'][current.weekday()]
+                    row_cells = table.add_row().cells
+                    row_cells[0].text = f"{current.month}月{current.day}日 星期{weekday}"
+                    row_cells[1].text = ''
+                    row_cells[2].text = ''
+                    row_cells[3].text = ''
+                    row_cells[4].text = ''
+                    row_cells[5].text = ''
+                    
+                    # 周末标记
+                    if current.weekday() >= 5:
+                        for cell in row_cells:
+                            for paragraph in cell.paragraphs:
+                                for run in paragraph.runs:
+                                    run.font.color.rgb = None  # 重置颜色
+                    
+                    current += timedelta(days=1)
+                
+                # 设置表格字体
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                run.font.name = '宋体'
+                                run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+                                run.font.size = Pt(10)
+                
+            except Exception as e:
+                logger.warning(f"生成日期表格失败: {e}")
+                doc.add_paragraph(f'日期范围：{start_date} 至 {end_date}')
+            
+            # 添加签名区域
+            doc.add_paragraph()
+            sig = doc.add_paragraph()
+            sig.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            run = sig.add_run(f'\n见习人员签名：_______________')
+            run.font.name = '宋体'
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+            run.font.size = Pt(12)
+            
+            run = sig.add_run(f'\n指导人员签名：_______________')
+            run.font.name = '宋体'
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+            run.font.size = Pt(12)
+        
+        # 保存文件
+        output_dir = '文件生成/output'
+        os.makedirs(output_dir, exist_ok=True)
+        
+        filename = f"见习签到表_{year}年{month}月_{len(persons)}人.docx"
+        filepath = os.path.join(output_dir, filename)
+        
+        doc.save(filepath)
+        
+        logger.info(f"生成见习签到表: {filepath}")
+        
+        return jsonify({
+            'success': True,
+            'message': '生成成功',
+            'data': {
+                'filename': filename,
+                'download_url': f'/api/doc_templates/download?path={output_dir}/{filename}'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"生成见习签到表失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
             'message': f'生成失败: {str(e)}'
         }), 500
 

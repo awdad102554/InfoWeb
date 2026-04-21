@@ -446,6 +446,57 @@ class DatabaseManager:
             if conn:
                 conn.close()
     
+    def get_company_cache_by_credit_code(self, credit_code):
+        """通过统一社会信用代码从缓存获取企业信息"""
+        self.delete_expired_company_cache()
+        
+        conn = None
+        cursor = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            # 查询所有未过期的缓存，然后在Python中匹配信用代码
+            query_sql = """
+            SELECT `company_name`, `company_data`, `expiry_time`
+            FROM `company_cache`
+            WHERE `expiry_time` > NOW()
+            """
+            
+            cursor.execute(query_sql)
+            results = cursor.fetchall()
+            
+            for result in results:
+                try:
+                    import json
+                    company_data = json.loads(result['company_data'])
+                    # 检查是否是列表
+                    if isinstance(company_data, list) and len(company_data) > 0:
+                        # 检查列表中是否有匹配的信用代码
+                        for item in company_data:
+                            if isinstance(item, dict) and item.get('TYSHXYDM') == credit_code:
+                                logger.info(f"从缓存获取企业信息(信用代码): {credit_code}")
+                                return company_data
+                    elif isinstance(company_data, dict):
+                        if company_data.get('TYSHXYDM') == credit_code:
+                            logger.info(f"从缓存获取企业信息(信用代码): {credit_code}")
+                            return company_data
+                except Exception as e:
+                    logger.warning(f"解析缓存数据失败: {e}")
+                    continue
+            
+            logger.info(f"缓存中未找到企业信息(信用代码): {credit_code}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"通过信用代码获取企业缓存失败: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+    
     def delete_expired_company_cache(self):
         """删除过期的企业信息缓存"""
         conn = None

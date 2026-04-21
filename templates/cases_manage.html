@@ -28,6 +28,9 @@
                     <p class="opacity-90 mt-2">查看、编辑和删除仲裁案件</p>
                 </div>
                 <div class="flex gap-3">
+                    <button onclick="openInternshipSignModal()" class="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition">
+                        <i class="fas fa-clipboard-check mr-2"></i>见习签到表
+                    </button>
                     <a href="/reserve_query" class="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition">
                         <i class="fas fa-calendar-check mr-2"></i>预约申请
                     </a>
@@ -107,6 +110,81 @@
             <a href="/" class="inline-block mt-4 text-blue-600 hover:text-blue-800">
                 <i class="fas fa-plus mr-1"></i>创建第一个案件
             </a>
+        </div>
+    </div>
+
+    <!-- 见习签到表 - 年月选择弹窗 -->
+    <div id="internshipYearMonthModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-calendar-alt text-pink-500 mr-2"></i>选择年月
+                </h3>
+                <button onclick="closeInternshipYearMonthModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- 年月切换 -->
+            <div class="flex justify-between items-center mb-6 py-2">
+                <button onclick="changeCalendarMonth(-1)" class="w-10 h-10 rounded-lg hover:bg-gray-100 text-gray-600">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="calendarYearMonth" class="text-xl font-bold text-pink-600">2026年4月</span>
+                <button onclick="changeCalendarMonth(1)" class="w-10 h-10 rounded-lg hover:bg-gray-100 text-gray-600">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            
+            <div class="flex gap-4 justify-end mt-4">
+                <button onclick="closeInternshipYearMonthModal()" 
+                    class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition">
+                    取消
+                </button>
+                <button onclick="confirmYearMonth()" 
+                    class="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition">
+                    下一步
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 见习签到表 - 填写信息弹窗 -->
+    <div id="internshipSignModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-clipboard-check text-pink-500 mr-2"></i>见习签到表
+                    <span id="selectedYearMonth" class="text-sm font-normal text-gray-500 ml-2"></span>
+                </h3>
+                <button onclick="closeInternshipSignModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- 见习人员列表 -->
+            <div id="internList" class="space-y-4">
+                <!-- 动态添加人员 -->
+            </div>
+            
+            <!-- 添加人员按钮 -->
+            <div class="mt-4">
+                <button onclick="addInternPerson()" 
+                    class="w-full py-3 border-2 border-dashed border-pink-300 text-pink-600 rounded-lg hover:bg-pink-50 transition">
+                    <i class="fas fa-plus mr-2"></i>添加见习人员
+                </button>
+            </div>
+            
+            <div class="flex gap-4 justify-end mt-6 pt-4 border-t">
+                <button onclick="closeInternshipSignModal()" 
+                    class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition">
+                    取消
+                </button>
+                <button onclick="generateInternshipSign()" 
+                    class="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition">
+                    <i class="fas fa-check mr-2"></i>确认
+                </button>
+            </div>
         </div>
     </div>
 
@@ -294,6 +372,351 @@
             currentPage = 1;
             document.getElementById('searchInput').value = '';
             loadCases();
+        }
+        
+        // ==================== 见习签到表相关 ====================
+        let selectedYear = null;
+        let selectedMonth = null;
+        let calendarViewYear = null;
+        let calendarViewMonth = null;
+        let internPersonCount = 0;
+        
+        // 每个见习人员的日期范围状态 {personId: {startDay, endDay, selecting}}
+        let personDateRanges = {};
+        // 当前月份休假日缓存 [1, 2, 3, ...]
+        let currentMonthHolidays = [];
+        
+        // 打开年月选择弹窗
+        function openInternshipSignModal() {
+            document.getElementById('internshipYearMonthModal').classList.remove('hidden');
+            initCalendar();
+        }
+        
+        // 关闭年月选择弹窗
+        function closeInternshipYearMonthModal() {
+            document.getElementById('internshipYearMonthModal').classList.add('hidden');
+        }
+        
+        // 初始化年月（默认当前年月，当前月即选中）
+        function initCalendar() {
+            const now = new Date();
+            calendarViewYear = now.getFullYear();
+            calendarViewMonth = now.getMonth() + 1;
+            selectedYear = calendarViewYear;
+            selectedMonth = calendarViewMonth;
+            document.getElementById('calendarYearMonth').textContent = selectedYear + '年' + selectedMonth + '月';
+        }
+        
+        // 切换月份（切换即选中当前显示的月份）
+        function changeCalendarMonth(delta) {
+            calendarViewMonth += delta;
+            if (calendarViewMonth > 12) {
+                calendarViewMonth = 1;
+                calendarViewYear++;
+            } else if (calendarViewMonth < 1) {
+                calendarViewMonth = 12;
+                calendarViewYear--;
+            }
+            selectedYear = calendarViewYear;
+            selectedMonth = calendarViewMonth;
+            document.getElementById('calendarYearMonth').textContent = selectedYear + '年' + selectedMonth + '月';
+        }
+        
+        // 确认年月选择
+        function confirmYearMonth() {
+            if (!selectedYear || !selectedMonth) {
+                alert('请选择年月');
+                return;
+            }
+            closeInternshipYearMonthModal();
+            openInternshipDetailModal();
+        }
+        
+        // 打开详细信息填写弹窗
+        function openInternshipDetailModal() {
+            document.getElementById('internshipSignModal').classList.remove('hidden');
+            document.getElementById('selectedYearMonth').textContent = selectedYear + '年' + selectedMonth + '月';
+            
+            // 清空列表并添加第一个人
+            personDateRanges = {};
+            currentMonthHolidays = [];
+            document.getElementById('internList').innerHTML = '';
+            internPersonCount = 0;
+            addInternPerson();
+            
+            // 加载休假日数据
+            loadHolidays(selectedYear, selectedMonth);
+        }
+        
+        // 加载休假日数据
+        async function loadHolidays(year, month) {
+            try {
+                var yearMonth = '' + year + String(month).padStart(2, '0');
+                var response = await fetch(API_BASE_URL + '/holiday/list?yearMonth=' + yearMonth);
+                var result = await response.json();
+                
+                if (result.success && result.data) {
+                    currentMonthHolidays = result.data;
+                    // 刷新所有已渲染的日历
+                    for (var pid in personDateRanges) {
+                        renderPersonCalendar(pid);
+                    }
+                }
+            } catch (error) {
+                console.error('加载休假日失败:', error);
+            }
+        }
+        
+        // 关闭见习签到表弹窗
+        function closeInternshipSignModal() {
+            document.getElementById('internshipSignModal').classList.add('hidden');
+            internPersonCount = 0;
+        }
+        
+
+        // 添加见习人员
+        function addInternPerson() {
+            internPersonCount++;
+            var personId = internPersonCount;
+            var lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+            var defaultStart = selectedYear + '-' + String(selectedMonth).padStart(2, '0') + '-01';
+            var defaultEnd = selectedYear + '-' + String(selectedMonth).padStart(2, '0') + '-' + String(lastDay).padStart(2, '0');
+            
+            // 初始化该人员的日期范围
+            personDateRanges[personId] = { startDay: 1, endDay: lastDay, selecting: false, tempStart: null };
+            
+            var personDiv = document.createElement('div');
+            personDiv.className = 'bg-gray-50 rounded-lg p-4 border border-gray-200';
+            personDiv.id = 'internPerson_' + personId;
+            
+            var deleteBtn = personId > 1 ? '<button onclick="removeInternPerson(' + personId + ')" class="text-red-500 hover:text-red-700 text-sm"><i class="fas fa-times mr-1"></i>删除</button>' : '';
+            
+            personDiv.innerHTML = 
+                '<div class="flex justify-between items-center mb-3">' +
+                    '<span class="text-sm font-medium text-gray-700">见习人员 #' + personId + '</span>' + deleteBtn +
+                '</div>' +
+                '<div class="space-y-3">' +
+                    '<div>' +
+                        '<label class="block text-xs font-medium text-gray-600 mb-1">姓名</label>' +
+                        '<input type="text" id="internName_' + personId + '" ' +
+                            'class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 text-sm" ' +
+                            'placeholder="请输入姓名">' +
+                    '</div>' +
+                    '<div>' +
+                        '<label class="block text-xs font-medium text-gray-600 mb-1">见习日期</label>' +
+                        '<div class="flex items-center gap-2">' +
+                            '<span id="dateDisplay_' + personId + '" class="text-sm text-gray-700 bg-white px-3 py-2 rounded-lg border border-gray-300 flex-1">' +
+                                selectedMonth + '月1日 至 ' + selectedMonth + '月' + lastDay + '日' +
+                            '</span>' +
+                            '<button onclick="togglePersonCalendar(' + personId + ')" class="px-3 py-2 bg-pink-100 text-pink-600 rounded-lg hover:bg-pink-200 transition">' +
+                                '<i class="fas fa-calendar-alt"></i>' +
+                            '</button>' +
+                        '</div>' +
+                        '<input type="hidden" id="internStartDate_' + personId + '" value="' + defaultStart + '">' +
+                        '<input type="hidden" id="internEndDate_' + personId + '" value="' + defaultEnd + '">' +
+                        '<!-- 个人日历弹窗 -->' +
+                        '<div id="personCalendar_' + personId + '" class="hidden mt-2 bg-white rounded-lg border border-pink-200 p-3 shadow-lg">' +
+                            '<div class="flex justify-between items-center mb-2">' +
+                                '<span class="text-xs text-gray-500" id="personCalHint_' + personId + '">点击选择开始日期</span>' +
+                                '<button onclick="closePersonCalendar(' + personId + ')" class="text-gray-400 hover:text-gray-600 text-xs"><i class="fas fa-times"></i></button>' +
+                            '</div>' +
+                            '<div class="grid grid-cols-7 gap-1 text-center mb-1">' +
+                                '<span class="text-xs text-red-500">日</span>' +
+                                '<span class="text-xs text-gray-600">一</span>' +
+                                '<span class="text-xs text-gray-600">二</span>' +
+                                '<span class="text-xs text-gray-600">三</span>' +
+                                '<span class="text-xs text-gray-600">四</span>' +
+                                '<span class="text-xs text-gray-600">五</span>' +
+                                '<span class="text-xs text-red-500">六</span>' +
+                            '</div>' +
+                            '<div class="grid grid-cols-7 gap-1" id="personCalGrid_' + personId + '"></div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            
+            document.getElementById('internList').appendChild(personDiv);
+            renderPersonCalendar(personId);
+        }
+        
+        // 切换个人日历显示
+        function togglePersonCalendar(personId) {
+            var cal = document.getElementById('personCalendar_' + personId);
+            if (cal.classList.contains('hidden')) {
+                // 关闭其他日历
+                document.querySelectorAll('[id^="personCalendar_"]').forEach(function(c) {
+                    c.classList.add('hidden');
+                });
+                cal.classList.remove('hidden');
+                personDateRanges[personId].selecting = false;
+                personDateRanges[personId].tempStart = null;
+                document.getElementById('personCalHint_' + personId).textContent = '点击选择开始日期';
+                renderPersonCalendar(personId);
+            } else {
+                cal.classList.add('hidden');
+            }
+        }
+        
+        // 关闭个人日历
+        function closePersonCalendar(personId) {
+            document.getElementById('personCalendar_' + personId).classList.add('hidden');
+        }
+        
+        // 渲染个人日历
+        function renderPersonCalendar(personId) {
+            var grid = document.getElementById('personCalGrid_' + personId);
+            if (!grid) return;
+            grid.innerHTML = '';
+            
+            var range = personDateRanges[personId] || { startDay: 1, endDay: 31 };
+            var firstDay = new Date(selectedYear, selectedMonth - 1, 1).getDay();
+            var lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+            var today = new Date();
+            var isCurrentMonth = today.getFullYear() === selectedYear && today.getMonth() + 1 === selectedMonth;
+            
+            // 填充空白
+            for (var i = 0; i < firstDay; i++) {
+                var empty = document.createElement('div');
+                empty.className = 'h-7';
+                grid.appendChild(empty);
+            }
+            
+            // 填充日期
+            for (var d = 1; d <= lastDay; d++) {
+                var btn = document.createElement('button');
+                var isToday = isCurrentMonth && d === today.getDate();
+                
+                var inRange = (d >= range.startDay && d <= range.endDay);
+                var isStart = (d === range.startDay);
+                var isEnd = (d === range.endDay);
+                var isTemp = (range.tempStart !== null && d === range.tempStart);
+                var isHoliday = currentMonthHolidays.indexOf(d) >= 0;
+                
+                var cls = 'h-7 w-full rounded text-xs font-medium transition relative flex items-center justify-center ';
+                if (isStart || isEnd) {
+                    cls += 'bg-pink-500 text-white';
+                } else if (inRange) {
+                    cls += 'bg-pink-200 text-pink-800';
+                } else if (isTemp) {
+                    cls += 'bg-pink-400 text-white';
+                } else if (isToday) {
+                    cls += 'border border-pink-400 text-pink-600';
+                } else {
+                    cls += 'text-gray-700 hover:bg-pink-50';
+                }
+                
+                btn.className = cls;
+                // 日期数字
+                var dateSpan = document.createElement('span');
+                dateSpan.textContent = d;
+                btn.appendChild(dateSpan);
+                // 休假日标记
+                if (isHoliday) {
+                    var holidayMark = document.createElement('span');
+                    holidayMark.className = 'absolute top-0 right-0 text-[8px] text-red-500 font-bold leading-none';
+                    holidayMark.textContent = '休';
+                    btn.appendChild(holidayMark);
+                }
+                btn.onclick = (function(day) {
+                    return function() { onPersonDateClick(personId, day); };
+                })(d);
+                grid.appendChild(btn);
+            }
+        }
+        
+        // 点击个人日历日期
+        function onPersonDateClick(personId, day) {
+            var range = personDateRanges[personId];
+            if (!range.selecting) {
+                range.tempStart = day;
+                range.selecting = true;
+                document.getElementById('personCalHint_' + personId).textContent = '开始：' + selectedMonth + '月' + day + '日，请点击结束日期';
+                renderPersonCalendar(personId);
+            } else {
+                var start, end;
+                if (day < range.tempStart) {
+                    start = day;
+                    end = range.tempStart;
+                } else {
+                    start = range.tempStart;
+                    end = day;
+                }
+                range.startDay = start;
+                range.endDay = end;
+                range.selecting = false;
+                range.tempStart = null;
+                
+                var startStr = selectedYear + '-' + String(selectedMonth).padStart(2, '0') + '-' + String(start).padStart(2, '0');
+                var endStr = selectedYear + '-' + String(selectedMonth).padStart(2, '0') + '-' + String(end).padStart(2, '0');
+                document.getElementById('internStartDate_' + personId).value = startStr;
+                document.getElementById('internEndDate_' + personId).value = endStr;
+                document.getElementById('dateDisplay_' + personId).textContent = selectedMonth + '月' + start + '日 至 ' + selectedMonth + '月' + end + '日';
+                
+                renderPersonCalendar(personId);
+                // 不自动关闭，让用户可以看到选择结果
+            }
+        }
+        
+        // 删除见习人员
+        function removeInternPerson(personId) {
+            var personDiv = document.getElementById('internPerson_' + personId);
+            if (personDiv) personDiv.remove();
+        }
+        
+        // 确认生成
+        async function generateInternshipSign() {
+            var persons = [];
+            var personDivs = document.getElementById('internList').querySelectorAll('[id^="internPerson_"]');
+            
+            for (var i = 0; i < personDivs.length; i++) {
+                var personId = personDivs[i].id.replace('internPerson_', '');
+                var name = document.getElementById('internName_' + personId).value.trim();
+                var startDate = document.getElementById('internStartDate_' + personId).value;
+                var endDate = document.getElementById('internEndDate_' + personId).value;
+                
+                if (!name) {
+                    alert('请填写见习人员 #' + personId + ' 的姓名');
+                    return;
+                }
+                if (!startDate || !endDate) {
+                    alert('请填写见习人员 #' + personId + ' 的日期范围');
+                    return;
+                }
+                
+                persons.push({
+                    name: name,
+                    startDate: startDate,
+                    endDate: endDate
+                });
+            }
+            
+            if (persons.length === 0) {
+                alert('请至少添加一名见习人员');
+                return;
+            }
+            
+            try {
+                var response = await fetch(API_BASE_URL + '/internship/sign', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: selectedYear,
+                        month: selectedMonth,
+                        persons: persons
+                    })
+                });
+                
+                var result = await response.json();
+                
+                if (result.success) {
+                    closeInternshipSignModal();
+                    alert('见习签到表生成成功！');
+                } else {
+                    alert('生成失败：' + (result.message || '未知错误'));
+                }
+            } catch (error) {
+                console.error('生成见习签到表失败:', error);
+                alert('网络错误，请稍后重试');
+            }
         }
         
         // HTML转义函数

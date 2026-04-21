@@ -67,9 +67,14 @@
                     </h1>
                     <p class="opacity-90 mt-2">查询内部服务器立案处理数据</p>
                 </div>
-                <a href="/cases" class="bg-white text-purple-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
-                    <i class="fas fa-arrow-left mr-2"></i>返回案件管理
-                </a>
+                <div class="flex gap-3">
+                    <button onclick="openDataShareModal()" class="bg-gradient-to-r from-blue-500 to-blue-700 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-800 transition shadow-lg">
+                        <i class="fas fa-database mr-2"></i>数据共享
+                    </button>
+                    <a href="/cases" class="bg-white text-purple-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                        <i class="fas fa-arrow-left mr-2"></i>返回案件管理
+                    </a>
+                </div>
             </div>
         </header>
 
@@ -511,6 +516,121 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 数据共享查询弹窗 -->
+    <div id="dataShareModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-[700px] max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden">
+            <!-- 弹窗头部 -->
+            <div class="bg-gradient-to-r from-blue-600 to-blue-800 text-white px-6 py-4 rounded-t-xl flex justify-between items-center">
+                <div>
+                    <h3 class="text-lg font-bold"><i class="fas fa-database mr-2"></i>数据共享查询</h3>
+                    <p class="text-sm opacity-90 mt-1">查询身份证、企业、机关单位信息</p>
+                </div>
+                <button onclick="closeDataShareModal()" class="text-white hover:text-gray-200 text-2xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- 弹窗内容 -->
+            <div class="p-6 flex-1 overflow-y-auto">
+                <!-- 查询类型选择 -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">查询类型</label>
+                    <div class="flex gap-3">
+                        <button onclick="selectDataShareType('idcard')" id="btnIdcard" class="flex-1 py-3 px-4 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 font-medium transition">
+                            <i class="fas fa-id-card mr-2"></i>身份证信息
+                        </button>
+                        <button onclick="selectDataShareType('company')" id="btnCompany" class="flex-1 py-3 px-4 rounded-lg border-2 border-gray-200 text-gray-600 font-medium transition hover:border-blue-300">
+                            <i class="fas fa-building mr-2"></i>企业信息
+                        </button>
+                        <button onclick="selectDataShareType('office')" id="btnOffice" class="flex-1 py-3 px-4 rounded-lg border-2 border-gray-200 text-gray-600 font-medium transition hover:border-blue-300">
+                            <i class="fas fa-landmark mr-2"></i>机关单位
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 身份证查询表单 -->
+                <div id="formIdcard" class="query-form">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">身份证号码</label>
+                        <input type="text" id="idcardInput" 
+                            class="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="请输入18位身份证号码">
+                    </div>
+                </div>
+
+                <!-- 企业查询表单 -->
+                <div id="formCompany" class="query-form hidden">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">查询方式</label>
+                        <div class="flex gap-4 mb-3">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="companyQueryType" value="name" checked onchange="toggleCompanyQueryType()" class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">按企业名称</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="companyQueryType" value="code" onchange="toggleCompanyQueryType()" class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">按统一社会信用代码</span>
+                            </label>
+                        </div>
+                        <input type="text" id="companyInput" 
+                            class="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="请输入企业名称">
+                    </div>
+                </div>
+
+                <!-- 机关单位查询表单 -->
+                <div id="formOffice" class="query-form hidden">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">机构名称</label>
+                        <input type="text" id="officeInput" 
+                            class="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="请输入机关单位名称">
+                    </div>
+                </div>
+
+                <!-- 查询按钮 -->
+                <div class="flex justify-center mb-6">
+                    <button onclick="executeDataShareQuery()" id="queryDataShareBtn"
+                        class="px-8 py-2.5 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-lg hover:from-blue-700 hover:to-blue-900 transition shadow-md">
+                        <i class="fas fa-search mr-2"></i>查询
+                    </button>
+                </div>
+
+                <!-- 加载状态 -->
+                <div id="dataShareLoading" class="hidden text-center py-8">
+                    <div class="loading-spinner mx-auto mb-3" style="border-top-color: #2563eb;"></div>
+                    <p class="text-gray-600">正在查询，请稍候...</p>
+                </div>
+
+                <!-- 查询结果 -->
+                <div id="dataShareResult" class="hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="text-sm font-bold text-gray-800">
+                            <i class="fas fa-clipboard-list mr-2 text-blue-600"></i>查询结果
+                        </h4>
+                        <span id="dataShareResultSource" class="text-xs text-gray-500"></span>
+                    </div>
+                    <div id="dataShareResultContent" class="bg-gray-50 rounded-lg p-4 max-h-[300px] overflow-y-auto">
+                        <!-- 动态填充结果 -->
+                    </div>
+                </div>
+
+                <!-- 错误提示 -->
+                <div id="dataShareError" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                    <i class="fas fa-exclamation-circle text-red-500 text-xl mb-2"></i>
+                    <p id="dataShareErrorMsg" class="text-red-600 text-sm">查询失败</p>
+                </div>
+            </div>
+            
+            <!-- 弹窗底部 -->
+            <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button onclick="closeDataShareModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                    关闭
+                </button>
             </div>
         </div>
     </div>
@@ -2197,6 +2317,290 @@
             }
         `;
         document.head.appendChild(toastStyle);
+
+        // ==================== 数据共享查询相关 ====================
+        let currentDataShareType = 'idcard';
+
+        // 打开数据共享弹窗
+        function openDataShareModal() {
+            document.getElementById('dataShareModal').classList.remove('hidden');
+            // 重置状态
+            selectDataShareType('idcard');
+            clearDataShareResult();
+        }
+
+        // 关闭数据共享弹窗
+        function closeDataShareModal() {
+            document.getElementById('dataShareModal').classList.add('hidden');
+            clearDataShareResult();
+        }
+
+        // 选择查询类型
+        function selectDataShareType(type) {
+            currentDataShareType = type;
+            
+            // 更新按钮样式
+            const types = ['idcard', 'company', 'office'];
+            types.forEach(t => {
+                const btn = document.getElementById('btn' + t.charAt(0).toUpperCase() + t.slice(1));
+                if (t === type) {
+                    btn.className = 'flex-1 py-3 px-4 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 font-medium transition';
+                } else {
+                    btn.className = 'flex-1 py-3 px-4 rounded-lg border-2 border-gray-200 text-gray-600 font-medium transition hover:border-blue-300';
+                }
+            });
+            
+            // 显示对应表单
+            document.getElementById('formIdcard').classList.add('hidden');
+            document.getElementById('formCompany').classList.add('hidden');
+            document.getElementById('formOffice').classList.add('hidden');
+            document.getElementById('form' + type.charAt(0).toUpperCase() + type.slice(1)).classList.remove('hidden');
+            
+            clearDataShareResult();
+        }
+
+        // 切换企业查询类型
+        function toggleCompanyQueryType() {
+            const type = document.querySelector('input[name="companyQueryType"]:checked').value;
+            const input = document.getElementById('companyInput');
+            if (type === 'name') {
+                input.placeholder = '请输入企业名称';
+            } else {
+                input.placeholder = '请输入统一社会信用代码';
+            }
+        }
+
+        // 清空查询结果
+        function clearDataShareResult() {
+            document.getElementById('dataShareLoading').classList.add('hidden');
+            document.getElementById('dataShareResult').classList.add('hidden');
+            document.getElementById('dataShareError').classList.add('hidden');
+        }
+
+        // 执行查询
+        async function executeDataShareQuery() {
+            let queryData = { type: currentDataShareType };
+            
+            if (currentDataShareType === 'idcard') {
+                const idcard = document.getElementById('idcardInput').value.trim();
+                if (!idcard) {
+                    showToast('请输入身份证号码');
+                    return;
+                }
+                if (!/^\d{17}[\dXx]$/.test(idcard)) {
+                    showToast('身份证号码格式不正确');
+                    return;
+                }
+                queryData.id_number = idcard;
+            } else if (currentDataShareType === 'company') {
+                const queryType = document.querySelector('input[name="companyQueryType"]:checked').value;
+                const value = document.getElementById('companyInput').value.trim();
+                if (!value) {
+                    showToast(queryType === 'name' ? '请输入企业名称' : '请输入统一社会信用代码');
+                    return;
+                }
+                if (queryType === 'name') {
+                    queryData.company_name = value;
+                } else {
+                    queryData.credit_code = value;
+                }
+            } else if (currentDataShareType === 'office') {
+                const name = document.getElementById('officeInput').value.trim();
+                if (!name) {
+                    showToast('请输入机关单位名称');
+                    return;
+                }
+                queryData.office_name = name;
+            }
+            
+            // 显示加载状态
+            document.getElementById('dataShareLoading').classList.remove('hidden');
+            document.getElementById('dataShareResult').classList.add('hidden');
+            document.getElementById('dataShareError').classList.add('hidden');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/datashare/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify(queryData)
+                });
+                
+                const result = await response.json();
+                
+                document.getElementById('dataShareLoading').classList.add('hidden');
+                
+                if (result.code === 200 && result.data) {
+                    renderDataShareResult(result.data, result.source);
+                } else {
+                    showDataShareError(result.message || '查询失败');
+                }
+            } catch (error) {
+                document.getElementById('dataShareLoading').classList.add('hidden');
+                showDataShareError('网络错误：' + error.message);
+            }
+        }
+
+        // 渲染查询结果
+        function renderDataShareResult(data, source) {
+            const container = document.getElementById('dataShareResultContent');
+            const sourceEl = document.getElementById('dataShareResultSource');
+            
+            sourceEl.textContent = source === 'cache' ? '（来自缓存）' : '（来自数据中心）';
+            
+            let html = '';
+            
+            if (currentDataShareType === 'idcard') {
+                // 身份证信息展示
+                html = renderIdcardResult(data);
+            } else if (currentDataShareType === 'company') {
+                // 企业信息展示
+                html = renderCompanyResult(data);
+            } else if (currentDataShareType === 'office') {
+                // 机关单位信息展示
+                html = renderOfficeResult(data);
+            }
+            
+            container.innerHTML = html;
+            document.getElementById('dataShareResult').classList.remove('hidden');
+        }
+
+        // 身份证信息结果展示
+        function renderIdcardResult(data) {
+            // 处理嵌套数据结构: data.data[0]
+            let item = null;
+            if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
+                item = data.data[0];
+            } else if (Array.isArray(data) && data.length > 0) {
+                item = data[0];
+            } else if (typeof data === 'object' && !Array.isArray(data)) {
+                item = data;
+            }
+            
+            if (!item) {
+                return '<div class="text-center text-gray-500 py-4">未找到该身份证信息</div>';
+            }
+            
+            const fields = [
+                { key: 'AAC003', label: '姓名' },
+                { key: 'AAC004', label: '性别' },
+                { key: 'AAC005', label: '民族' },
+                { key: 'AAC006', label: '出生日期' },
+                { key: 'AAC147', label: '身份证号码' },
+                { key: 'AAE006', label: '户籍地址' },
+            ];
+            
+            return renderKeyValueTable(item, fields);
+        }
+
+        // 企业信息结果展示
+        function renderCompanyResult(data) {
+            // 处理嵌套数据结构
+            let item = null;
+            if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
+                item = data.data[0];
+            } else if (Array.isArray(data) && data.length > 0) {
+                item = data[0];
+            } else if (typeof data === 'object' && !Array.isArray(data)) {
+                item = data;
+            }
+            
+            if (!item) {
+                return '<div class="text-center text-gray-500 py-4">未找到该企业信息</div>';
+            }
+            
+            const fields = [
+                { key: 'CNNAME', label: '企业名称' },
+                { key: 'TYSHXYDM', label: '统一社会信用代码' },
+                { key: 'LEGALPERSONNAME', label: '法定代表人' },
+                { key: 'REGADDRESS', label: '注册地址' },
+                { key: 'SCJYDZ', label: '经营地址' },
+                { key: 'ESTABLISHDATE', label: '成立日期', format: v => {
+                    if (!v) return '-';
+                    if (typeof v === 'number') {
+                        const date = new Date(v);
+                        return isNaN(date.getTime()) ? v : date.toISOString().split('T')[0];
+                    }
+                    return v;
+                }},
+                { key: 'REGFUNDAMOUNT', label: '注册资本（万元）' },
+                { key: 'COMPANYTYPE', label: '公司类型' },
+                { key: 'REGISTERSTATE', label: '登记状态' },
+                { key: 'COMPANYPHONE', label: '联系电话' },
+            ];
+            
+            return renderKeyValueTable(item, fields);
+        }
+
+        // 机关单位信息结果展示
+        function renderOfficeResult(data) {
+            // 处理嵌套数据结构
+            let item = null;
+            if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
+                item = data.data[0];
+            } else if (Array.isArray(data) && data.length > 0) {
+                item = data[0];
+            } else if (typeof data === 'object' && !Array.isArray(data)) {
+                item = data;
+            }
+            
+            if (!item) {
+                return '<div class="text-center text-gray-500 py-4">未找到该机关单位信息</div>';
+            }
+            
+            // 机关单位字段映射
+            const fields = [
+                { key: 'JGMC', label: '机构名称' },
+                { key: 'TYSHXYDM', label: '统一社会信用代码' },
+                { key: 'FZR', label: '负责人' },
+                { key: 'JGDZ', label: '机构地址' },
+                { key: 'BFRQ', label: '颁发日期' },
+            ];
+            
+            return renderKeyValueTable(item, fields);
+        }
+
+        // 通用键值表格渲染
+        function renderKeyValueTable(item, fields) {
+            if (!item) {
+                return '<div class="text-center text-gray-500 py-4">暂无数据</div>';
+            }
+            
+            let html = '<table class="w-full text-sm">';
+            fields.forEach(field => {
+                let value = item[field.key];
+                if (field.format && value) {
+                    value = field.format(value);
+                }
+                html += `
+                    <tr class="border-b border-gray-200 last:border-0">
+                        <td class="py-2.5 px-3 text-gray-600 font-medium w-1/3 bg-gray-50">${field.label}</td>
+                        <td class="py-2.5 px-3 text-gray-800">${escapeHtml(value || '-')}</td>
+                    </tr>
+                `;
+            });
+            html += '</table>';
+            return html;
+        }
+
+        // 显示错误
+        function showDataShareError(message) {
+            document.getElementById('dataShareErrorMsg').textContent = message;
+            document.getElementById('dataShareError').classList.remove('hidden');
+        }
+
+        // 回车事件绑定
+        document.getElementById('idcardInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') executeDataShareQuery();
+        });
+        document.getElementById('companyInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') executeDataShareQuery();
+        });
+        document.getElementById('officeInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') executeDataShareQuery();
+        });
     </script>
 </body>
 </html>

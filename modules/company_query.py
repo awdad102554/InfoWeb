@@ -19,6 +19,123 @@ class CompanyQuery:
         self.login_manager = get_login_manager()
         self.db_manager = get_db_manager()
     
+    def query_company_by_credit_code(self, credit_code):
+        """
+        根据统一社会信用代码查询企业信息（支持缓存）
+        
+        Args:
+            credit_code: 统一社会信用代码
+            
+        Returns:
+            dict: 查询结果
+        """
+        # 第一步：先从缓存中查询
+        logger.info(f"查询企业信息(信用代码): {credit_code} (先查缓存)")
+        cached_data = self.db_manager.get_company_cache_by_credit_code(credit_code)
+        
+        if cached_data is not None:
+            logger.info(f"从缓存返回企业信息(信用代码): {credit_code}")
+            # 确保返回的是列表格式
+            if isinstance(cached_data, dict):
+                cached_data = [cached_data]
+            return {
+                'code': 200,
+                'message': '查询成功(来自缓存)',
+                'data': cached_data,
+                'source': 'cache'
+            }
+        
+        # 第二步：缓存中没有，调用API查询
+        # 检查并更新登录状态
+        if not self.login_manager.check_and_renew_login():
+            return {
+                'code': 401,
+                'message': '登录失败，无法查询企业信息',
+                'data': None
+            }
+        
+        # 获取认证头信息
+        headers = self.login_manager.get_auth_headers()
+        if not headers:
+            return {
+                'code': 401,
+                'message': '获取认证信息失败',
+                'data': None
+            }
+        
+        # 构建请求体
+        payload = {"TYSHXYDM": credit_code}
+        
+        try:
+            logger.info(f"从API查询企业信息(信用代码): {credit_code}")
+            
+            response = requests.post(
+                self.config.COMPANY_QUERY_URL,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get('code') == 200:
+                data = result.get('data', [])
+                if not isinstance(data, list):
+                    data = []
+                
+                # 按信用代码精确匹配
+                filtered_data = []
+                for item in data:
+                    if isinstance(item, dict) and item.get('TYSHXYDM') == credit_code:
+                        filtered_data.append(item)
+                
+                if filtered_data:
+                    logger.info(f"找到 {len(filtered_data)} 条匹配记录(信用代码)")
+                    
+                    # 第三步：将结果保存到缓存（用企业名称作为key）
+                    if filtered_data and filtered_data[0].get('CNNAME'):
+                        company_name = filtered_data[0].get('CNNAME')
+                        self.db_manager.save_company_cache(company_name, filtered_data, cache_days=30)
+                    
+                    return {
+                        'code': 200,
+                        'message': '查询成功',
+                        'data': filtered_data,
+                        'source': 'api'
+                    }
+                else:
+                    logger.info(f"未找到匹配记录(信用代码)，共返回 {len(data)} 条记录")
+                    return {
+                        'code': 404,
+                        'message': '未找到匹配的企业信息',
+                        'data': None,
+                        'source': 'api'
+                    }
+            else:
+                error_msg = result.get('message', '查询失败')
+                logger.error(f"查询失败: {error_msg}")
+                return {
+                    'code': result.get('code', 500),
+                    'message': error_msg,
+                    'data': None
+                }
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"查询请求失败: {str(e)}")
+            return {
+                'code': 500,
+                'message': f'查询请求失败: {str(e)}',
+                'data': None
+            }
+        except json.JSONDecodeError as e:
+            logger.error(f"查询响应JSON解析失败: {str(e)}")
+            return {
+                'code': 500,
+                'message': f'查询响应JSON解析失败: {str(e)}',
+                'data': None
+            }
+
     def query_company_info(self, company_name, exact_match=True):
         """
         查询企业信息（支持缓存）
