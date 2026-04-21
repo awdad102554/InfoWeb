@@ -3588,10 +3588,11 @@ def get_holiday_list():
 @app.route('/api/internship/sign', methods=['POST'])
 def generate_internship_sign():
     """
-    生成见习签到表
-    接收年月和见习人员列表，生成Word文档
+    生成见习签到表（Excel格式）
+    按签到表.xlsx模板生成
     """
     try:
+        global _holiday_cache, _holiday_cache_month
         data = request.get_json()
         
         if not data:
@@ -3616,130 +3617,189 @@ def generate_internship_sign():
                 'message': '请至少添加一名见习人员'
             }), 400
         
-        # 使用python-docx生成Word文档
-        from docx import Document
-        from docx.shared import Pt, Cm
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.oxml.ns import qn
-        
-        doc = Document()
-        
-        # 设置中文字体
-        doc.styles['Normal'].font.name = '宋体'
-        doc.styles['Normal']._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-        doc.styles['Normal'].font.size = Pt(12)
-        
-        # 计算该月天数
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+        from openpyxl.utils import get_column_letter
+        from datetime import datetime, timedelta
         import calendar
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"{year}年{month}月"
+        
+        # 样式定义
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        center_align = Alignment(horizontal='center', vertical='center')
+        
+        # 字体
+        font_title = Font(name='宋体', size=14, bold=True)
+        font_normal = Font(name='宋体', size=11)
+        font_header = Font(name='宋体', size=11, bold=True)
+        
+        # 列宽
+        ws.column_dimensions['A'].width = 11.625
+        ws.column_dimensions['B'].width = 11.625
+        ws.column_dimensions['C'].width = 11.625
+        for col in ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']:
+            ws.column_dimensions[col].width = 9
+        
+        # ===== 标题行 =====
+        ws.merge_cells('A1:K1')
+        cell = ws['A1']
+        cell.value = f'{year}年{month}月永安市社会保险中心见习人员签到表'
+        cell.font = font_title
+        cell.alignment = center_align
+        for col in range(1, 12):
+            ws.cell(row=1, column=col).border = thin_border
+        ws.row_dimensions[1].height = 22.5
+        
+        # ===== 表头 =====
+        # 第2行
+        headers_row2 = ['日期', '星期', '姓名', '上午', '', '', '', '下午', '', '', '']
+        for col, val in enumerate(headers_row2, 1):
+            cell = ws.cell(row=2, column=col, value=val)
+            cell.font = font_header
+            cell.alignment = center_align
+            cell.border = thin_border
+        ws.row_dimensions[2].height = 23.1
+        
+        # 第3行
+        headers_row3 = ['', '', '', '上班', '', '下班', '', '上班', '', '下班', '']
+        for col, val in enumerate(headers_row3, 1):
+            cell = ws.cell(row=3, column=col, value=val)
+            cell.font = font_header
+            cell.alignment = center_align
+            cell.border = thin_border
+        ws.row_dimensions[3].height = 23.1
+        
+        # 第4行
+        headers_row4 = ['', '', '', '时间', '签名', '时间', '签名', '时间', '签名', '时间', '签名']
+        for col, val in enumerate(headers_row4, 1):
+            cell = ws.cell(row=4, column=col, value=val)
+            cell.font = font_header
+            cell.alignment = center_align
+            cell.border = thin_border
+        ws.row_dimensions[4].height = 23.1
+        
+        # 合并单元格
+        ws.merge_cells('A2:A4')  # 日期
+        ws.merge_cells('B2:B4')  # 星期
+        ws.merge_cells('C2:C4')  # 姓名
+        ws.merge_cells('D2:G2')  # 上午
+        ws.merge_cells('H2:K2')  # 下午
+        ws.merge_cells('D3:E3')  # 上班
+        ws.merge_cells('F3:G3')  # 下班
+        ws.merge_cells('H3:I3')  # 上班
+        ws.merge_cells('J3:K3')  # 下班
+        
+        # ===== 获取休假日 =====
+        holiday_days = set()
+        try:
+            year_month = f"{year}{str(month).zfill(2)}"
+            if _holiday_cache_month == year_month and year_month in _holiday_cache:
+                holiday_days = set(_holiday_cache[year_month])
+            else:
+                if login_manager.check_and_renew_login():
+                    headers = login_manager.get_auth_headers()
+                    if headers:
+                        resp = requests.get(
+                            f"http://10.96.10.78:8080/v1/api/admin/holidayList?date={year_month}",
+                            headers=headers, timeout=30
+                        )
+                        if resp.status_code == 200:
+                            result = resp.json()
+                            if result.get('code') == 200:
+                                for h in result.get('data', {}).get('holiaya', []):
+                                    ds = h.get('date', '')
+                                    if len(ds) == 8:
+                                        try:
+                                            holiday_days.add(int(ds[6:8]))
+                                        except:
+                                            pass
+                                _holiday_cache[year_month] = list(holiday_days)
+                                _holiday_cache_month = year_month
+        except Exception as e:
+            logger.warning(f"获取休假日失败: {e}")
+        
+        # ===== 填充数据 =====
+        current_row = 5
         last_day = calendar.monthrange(year, month)[1]
         
-        # 为每个人员生成签到表
-        for idx, person in enumerate(persons):
-            name = person.get('name', '')
-            start_date = person.get('startDate', '')
-            end_date = person.get('endDate', '')
+        for day in range(1, last_day + 1):
+            date_obj = datetime(year, month, day)
+            weekday = date_obj.weekday()  # 0=周一, 5=周六, 6=周日
             
-            if idx > 0:
-                doc.add_page_break()
+            # 跳过周末和节假日
+            if weekday >= 5 or day in holiday_days:
+                continue
             
-            # 添加标题
-            title = doc.add_paragraph()
-            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = title.add_run('劳动仲裁见习签到表')
-            run.font.name = '黑体'
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
-            run.font.size = Pt(18)
-            run.font.bold = True
+            weekday_names = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+            weekday_str = weekday_names[weekday]
             
-            doc.add_paragraph()
+            # 找出在该日期范围内的见习人员
+            active_persons = []
+            for p in persons:
+                try:
+                    start = datetime.strptime(p.get('startDate', ''), '%Y-%m-%d')
+                    end = datetime.strptime(p.get('endDate', ''), '%Y-%m-%d')
+                    if start <= date_obj <= end:
+                        active_persons.append(p.get('name', ''))
+                except:
+                    pass
             
-            # 添加基本信息
-            info = doc.add_paragraph()
-            info.add_run(f'见习人员：{name}').font.size = Pt(12)
-            info.add_run(f'    见习期间：{start_date} 至 {end_date}').font.size = Pt(12)
+            if len(active_persons) == 0:
+                continue
             
-            doc.add_paragraph()
-            
-            # 生成每日签到表格
-            # 计算日期范围内的天数
-            try:
-                from datetime import datetime, timedelta
-                start = datetime.strptime(start_date, '%Y-%m-%d')
-                end = datetime.strptime(end_date, '%Y-%m-%d')
+            # 第一个人员行：显示日期
+            for pi, name in enumerate(active_persons):
+                row = current_row + pi
+                ws.row_dimensions[row].height = 23.1
                 
-                # 添加签到表格（7列：日期、上午签到、上午签退、下午签到、下午签退、备注）
-                table = doc.add_table(rows=1, cols=6)
-                table.style = 'Table Grid'
-                
-                # 设置表头
-                hdr_cells = table.rows[0].cells
-                headers = ['日期', '上午签到', '上午签退', '下午签到', '下午签退', '备注']
-                for i, header in enumerate(headers):
-                    hdr_cells[i].text = header
-                    for paragraph in hdr_cells[i].paragraphs:
-                        for run in paragraph.runs:
-                            run.font.bold = True
-                            run.font.name = '宋体'
-                            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-                            run.font.size = Pt(11)
-                
-                # 填充日期行
-                current = start
-                while current <= end:
-                    date_str = current.strftime('%Y-%m-%d')
-                    weekday = ['一', '二', '三', '四', '五', '六', '日'][current.weekday()]
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = f"{current.month}月{current.day}日 星期{weekday}"
-                    row_cells[1].text = ''
-                    row_cells[2].text = ''
-                    row_cells[3].text = ''
-                    row_cells[4].text = ''
-                    row_cells[5].text = ''
+                # 日期列（只第一行显示）
+                if pi == 0:
+                    cell = ws.cell(row=row, column=1)
+                    # 使用1900年的日期，格式m/d显示月/日
+                    cell.value = datetime(1900 if day > 1 else year, month, day)
+                    cell.number_format = 'm/d;@'
+                    cell.font = font_normal
+                    cell.alignment = center_align
+                    cell.border = thin_border
                     
-                    # 周末标记
-                    if current.weekday() >= 5:
-                        for cell in row_cells:
-                            for paragraph in cell.paragraphs:
-                                for run in paragraph.runs:
-                                    run.font.color.rgb = None  # 重置颜色
-                    
-                    current += timedelta(days=1)
+                    # 星期列
+                    cell = ws.cell(row=row, column=2, value=weekday_str)
+                    cell.font = font_normal
+                    cell.alignment = center_align
+                    cell.border = thin_border
+                else:
+                    # 后续人员行：日期和星期为空但保留边框
+                    ws.cell(row=row, column=1).border = thin_border
+                    ws.cell(row=row, column=2).border = thin_border
                 
-                # 设置表格字体
-                for row in table.rows:
-                    for cell in row.cells:
-                        for paragraph in cell.paragraphs:
-                            for run in paragraph.runs:
-                                run.font.name = '宋体'
-                                run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-                                run.font.size = Pt(10)
+                # 姓名
+                cell = ws.cell(row=row, column=3, value=name)
+                cell.font = font_normal
+                cell.alignment = center_align
+                cell.border = thin_border
                 
-            except Exception as e:
-                logger.warning(f"生成日期表格失败: {e}")
-                doc.add_paragraph(f'日期范围：{start_date} 至 {end_date}')
+                # 上午下午各列（空白）
+                for col in range(4, 12):
+                    ws.cell(row=row, column=col).border = thin_border
             
-            # 添加签名区域
-            doc.add_paragraph()
-            sig = doc.add_paragraph()
-            sig.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            run = sig.add_run(f'\n见习人员签名：_______________')
-            run.font.name = '宋体'
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-            run.font.size = Pt(12)
-            
-            run = sig.add_run(f'\n指导人员签名：_______________')
-            run.font.name = '宋体'
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-            run.font.size = Pt(12)
+            current_row += len(active_persons)
         
         # 保存文件
         output_dir = '文件生成/output'
         os.makedirs(output_dir, exist_ok=True)
         
-        filename = f"见习签到表_{year}年{month}月_{len(persons)}人.docx"
+        filename = f"见习签到表_{year}年{month}月.xlsx"
         filepath = os.path.join(output_dir, filename)
         
-        doc.save(filepath)
+        wb.save(filepath)
         
         logger.info(f"生成见习签到表: {filepath}")
         
