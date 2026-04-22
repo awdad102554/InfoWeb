@@ -3792,8 +3792,8 @@ def generate_internship_sign():
             
             current_row += len(active_persons)
         
-        # 保存文件
-        output_dir = '文件生成/output'
+        # 保存文件到独立目录
+        output_dir = '见习签到表/output'
         os.makedirs(output_dir, exist_ok=True)
         
         filename = f"见习签到表_{year}年{month}月.xlsx"
@@ -3808,7 +3808,7 @@ def generate_internship_sign():
             'message': '生成成功',
             'data': {
                 'filename': filename,
-                'download_url': f'/api/doc_templates/download?path={output_dir}/{filename}'
+                'download_url': f'/api/internship/download?filename={filename}'
             }
         })
         
@@ -3820,6 +3820,40 @@ def generate_internship_sign():
             'success': False,
             'message': f'生成失败: {str(e)}'
         }), 500
+
+
+@app.route('/api/internship/download', methods=['GET'])
+def download_internship_sign():
+    """
+    下载见习签到表
+    参数: filename - 文件名
+    """
+    try:
+        filename = request.args.get('filename', '')
+        if not filename:
+            return jsonify({'success': False, 'message': '缺少参数: filename'}), 400
+        
+        # 安全检查：防止目录遍历
+        if '..' in filename or '/' in filename or '\\' in filename:
+            return jsonify({'success': False, 'message': '非法文件名'}), 403
+        
+        directory = os.path.join(os.path.dirname(__file__), '见习签到表', 'output')
+        filepath = os.path.join(directory, filename)
+        
+        if not os.path.exists(filepath) or not os.path.isfile(filepath):
+            return jsonify({'success': False, 'message': '文件不存在'}), 404
+        
+        return send_from_directory(
+            directory=directory,
+            path=filename,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        logger.error(f"下载见习签到表失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'下载失败: {str(e)}'}), 500
 
 
 @app.route('/api/workflow/optimize-text', methods=['POST'])

@@ -709,6 +709,10 @@
                 
                 if (result.success) {
                     closeInternshipSignModal();
+                    // 自动触发下载
+                    if (result.data && result.data.download_url) {
+                        window.location.href = result.data.download_url;
+                    }
                     alert('见习签到表生成成功！');
                 } else {
                     alert('生成失败：' + (result.message || '未知错误'));
